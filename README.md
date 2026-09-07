@@ -42,7 +42,28 @@ ssh you@host 'sh -s -- probe.jpg' < scripts/probe-host.sh
 The script is read-only apart from a scratch directory under `$HOME` that it
 removes on exit. Paste the whole output into the pull request.
 
-### Two checks the script does not do
+## Milestone 1: host setup
+
+See the numbered checklist in the session notes. In short: create the two www
+entries (`nodejs` for the app, `php` for the files vhost — there is no `static`
+type), issue certificates, create the MySQL database, and copy the
+`MYDEVIL_*` secrets from the awfoto-site repo.
+
+Then run the two checks Milestone 0 could not make without creating state:
+
+```sh
+# 1. Colour, on a real Adobe RGB export
+scp DSC_1234.jpg you@host:probe.jpg
+ssh you@host 'sh -s -- probe.jpg' < scripts/colour-check.sh
+
+# 2. Autoindex, once pliki.aw-foto.pl exists
+ssh you@host 'mkdir -p domains/pliki.aw-foto.pl/public_html/f/testtoken && \
+              echo ok > domains/pliki.aw-foto.pl/public_html/f/testtoken/t.txt'
+curl -s https://pliki.aw-foto.pl/f/testtoken/      # must NOT list t.txt
+curl -s https://pliki.aw-foto.pl/f/testtoken/t.txt # must return: ok
+```
+
+### Two checks the Milestone 0 script does not do
 
 It deliberately skips anything that creates state on the host:
 
