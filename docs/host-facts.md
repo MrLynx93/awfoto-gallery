@@ -36,9 +36,10 @@ the numbers below are the ones the architecture is sized against.
 
 2. **There is no `static` site type.** `devil www list` shows `aw-foto.pl` as
    **php**, despite awfoto-site's README documenting `devil www add aw-foto.pl
-   static`. The files vhost is therefore a php site — which serves existing
-   files straight from nginx, but *does* execute `.php`. Hence: originals live
-   outside the docroot, and ZIP names are sanitised with `.zip` forced.
+   static`. This drove a files-vhost design that has since been dropped in
+   favour of serving every byte through Node — see "Web-serving findings" below
+   for what that vhost turned out to be like. It still matters for the app
+   vhost, and for knowing that awfoto-site's README is wrong about itself.
 
 3. **`df` cannot see the account quota.** It reports the shared ZFS pool
    (`zroot/root/usr/home`, 1.7 TB, 1.1 TB available). A free-space guard built
@@ -50,50 +51,42 @@ the numbers below are the ones the architecture is sized against.
 
 ## Still outstanding
 
-Both create state on the host, so the probe skips them. They are Milestone 1
-tasks:
+Milestone 1 tasks. The probe skips them because they create state on the host.
 
 - **Colour.** Resize a real Adobe RGB Lightroom export with the exact `magick`
   command `images.js` will use and compare side by side. `lcms` being present
-  proves it *can* be done right, not that it *is*.
-- ~~**Autoindex**~~ — **CONFIRMED ON.** `curl https://pliki.aw-foto.pl/f/<token>/`
-  lists the directory contents. `.htaccess` is not a remedy: mydevil's php sites
-  are nginx, which ignores it. Still to determine: whether `/` and `/f/` also
-  list (that is the serious case — it would make every gallery enumerable
-  without a token), and whether `devil www` exposes an autoindex toggle.
+  proves it *can* be done right, not that it *is*. `scripts/colour-check.sh`
+  does the mechanical part.
+- **Streaming through Passenger.** Put a ~5 GB file under `STORAGE_ROOT`, serve
+  it from a throwaway route with `res.sendFile()`, and confirm it completes,
+  memory stays flat, and `curl -r 0-100` returns `206`. If Passenger buffers
+  responses or imposes a request timeout, the download design needs rethinking —
+  and it is much cheaper to learn that here than after the client gallery is
+  built on it.
 
-  **Severity note.** A listing at `/f/<token>/` is close to harmless: reaching it
-  requires the 32-character token, and whoever holds that is the client, who is
-  entitled to every file in the directory anyway. It leaks original filenames,
-  which the ZIP would reveal regardless. A listing at `/f/` or `/` is the real
-  problem.
+## Web-serving findings — recorded, no longer live
 
-  **Mitigation:** the worker writes an empty `index.html` into the docroot, into
-  `f/`, and into every token directory it creates.
+These were all measured on an experimental `pliki.aw-foto.pl` php vhost, back
+when previews and archives were going to be served by nginx from a docroot. That
+design was dropped: **no file is web-served at all now**, so none of this is a
+live concern. It is kept because it is true of the host, and because anyone
+proposing a docroot again should read it first.
 
-- **PHP executes in that docroot — CONFIRMED.** `<?php echo 42;` served from a
-  token directory returns `42`. So any attacker-controlled bytes landing there
-  under a `.php` name would be remote code execution on the account.
-
-  **The rule this forces:** every file the worker writes into the files docroot
-  gets an extension *we* append from a fixed allowlist — `.jpg`, `.zip`,
-  `.html` — never one taken from user input. nginx routes to PHP on
-  `location ~ \.php$`, anchored at the end, so a name ending in `.zip` cannot
-  execute regardless of what precedes it, and `evil.php.zip` is inert. That
-  closes the hole structurally instead of relying on a sanitiser being correct.
-
-  **The anchor is confirmed present.** `y.php.zip` returns its own source text
-  rather than executing, so a name ending in an extension we chose cannot run,
-  whatever precedes it. The construction rule above therefore holds and the
-  sanitiser is belt-and-braces rather than the only line of defence.
-
-  **Path-info is enabled**: `x.php/foo.jpg` executes `x.php`. Standard nginx
-  `fastcgi_split_path_info` behaviour, and harmless here — it still requires a
-  real `.php` file on disk, and we never write one. It does not give `.zip` or
-  `.jpg` files a route to execution.
-
-  Net: **the files docroot is safe as long as no `.php` file ever exists in it**,
-  which the design guarantees by never writing a caller-supplied extension.
+- **Autoindex is on, and cannot be turned off.** A token directory listed its
+  contents, and so did `/f/` — the serious case, since it would have made every
+  gallery enumerable without knowing any token. `.htaccess` is no remedy:
+  mydevil's php sites are nginx, which ignores it, and `devil www options` has no
+  autoindex switch. The fix would have been `index.html` files written by the
+  worker into every directory.
+- **PHP executes there.** `<?php echo 42;` returned `42`. Path-info is enabled
+  too, so `x.php/foo.jpg` runs `x.php` — ordinary nginx
+  `fastcgi_split_path_info` behaviour, and it still needs a real `.php` file on
+  disk to target.
+- **The `.php` match is anchored.** `y.php.zip` returned its own source rather
+  than executing, so a file named with an extension chosen by the application
+  could not be routed to PHP whatever preceded it. The docroot design was
+  therefore salvageable — it was rejected on product grounds, not because it was
+  unsafe.
 
 ## `devil www options` — no autoindex switch, but five settings that matter
 
@@ -102,19 +95,18 @@ The full usage (the Milestone 0 probe truncated it) offers: `gzip`, `sslonly`,
 `cache_debug`, `waf`, `blacklist`, `stats_anonymize`, `stats_exclude`,
 `processes`, `tls_min`.
 
-**There is no autoindex option**, which settles it: directory listings are
-suppressed with `index.html` files written by the worker, at the docroot, at
-`f/`, and in every token directory.
+**There is no autoindex option.** That was decisive while a files vhost was on
+the table; it is now just a recorded fact, since nothing is web-served.
 
 Five worth setting deliberately:
 
 | Option | Why |
 |---|---|
 | `processes 1+` | Caps Passenger workers on the app vhost. Directly relevant — the account allows only 40 processes total and the worker plus its `magick`/`zip` children compete for them. |
-| `cache` | Leave **off** on the files vhost. Token-addressed files are immutable, so caching looks attractive, but a cached ZIP outliving its deletion would quietly break the expiry promise, which is a day-one feature. |
+| `cache` | Leave **off**. Responses are per-session and authorised; a cached archive outliving its deletion would quietly break the expiry promise, which is a day-one feature. |
 | `sslonly on` | Both vhosts. Gallery links go out by message and get clicked on phones. |
-| `php_openbasedir` | Defence in depth on the files vhost: confine PHP to that docroot, so even an unforeseen `.php` there cannot read the rest of the account. |
-| `waf 0-5` | **Suspect this first if tus uploads misbehave in M4.** A WAF inspecting large `PATCH` bodies is exactly the kind of thing that breaks resumable upload in a confusing way. |
+| `php_openbasedir` | Only relevant if a php vhost ever returns. Not used by the current design. |
+| `waf 0-5` | **Suspect this first if tus uploads misbehave**, and second if large downloads do. A WAF inspecting big `PATCH` bodies or buffering big responses breaks both in confusing ways. |
 
 `php_eval` / `php_exec` most likely disable PHP's `eval()` and `exec()` families
 rather than PHP itself — worth one test, because if `php_exec off` turns PHP off

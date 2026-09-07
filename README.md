@@ -44,37 +44,51 @@ removes on exit. Paste the whole output into the pull request.
 
 ## Milestone 1: host setup
 
-See the numbered checklist in the session notes. In short: create the two www
-entries (`nodejs` for the app, `php` for the files vhost — there is no `static`
-type), issue certificates, create the MySQL database, and copy the
-`MYDEVIL_*` secrets from the awfoto-site repo.
-
-Then run the two checks Milestone 0 could not make without creating state:
+One vhost, not two. The files are never web-served, so there is no files site:
 
 ```sh
-# 1. Colour, on a real Adobe RGB export
-scp DSC_1234.jpg you@host:probe.jpg
-ssh you@host 'sh -s -- probe.jpg' < scripts/colour-check.sh
+devil www add galeria.aw-foto.pl nodejs /usr/local/bin/node22 production
+devil ssl www add <IP> le le galeria.aw-foto.pl
+devil www options galeria.aw-foto.pl sslonly on
+devil www options galeria.aw-foto.pl processes 2   # against the 40-process cap
 
-# 2. Autoindex, once pliki.aw-foto.pl exists
-ssh you@host 'mkdir -p domains/pliki.aw-foto.pl/public_html/f/testtoken && \
-              echo ok > domains/pliki.aw-foto.pl/public_html/f/testtoken/t.txt'
-curl -s https://pliki.aw-foto.pl/f/testtoken/      # must NOT list t.txt
-curl -s https://pliki.aw-foto.pl/f/testtoken/t.txt # must return: ok
+devil mysql db add galeria galeria --collate=utf8mb4_unicode_ci
+devil mysql passwd galeria      # prompts; this is DB_PASSWORD
+devil mysql list -v             # read back the REAL names — mydevil prefixes them
 ```
 
-### Two checks the Milestone 0 script does not do
+Then copy `MYDEVIL_HOST`, `MYDEVIL_USER` and `MYDEVIL_SSH_KEY` into this repo's
+Actions secrets, and put `.env` (from `.env.example`) at
+`~/domains/galeria.aw-foto.pl/public_nodejs/.env`, mode 600.
 
-It deliberately skips anything that creates state on the host:
+### The two checks the Milestone 0 script does not do
 
-1. **Colour.** Resize one real Adobe RGB Lightroom export and compare it side by
-   side with the original. If the ICC profile is dropped rather than converted
-   to sRGB, saturated reds and greens go visibly flat. This is the one quality
-   bug a photographer spots instantly and a client can never describe.
-2. **Static vhost autoindex.** `devil www add pliki.aw-foto.pl static`, put a
-   file at a deep path, and confirm the directory does not list its own
-   contents. If autoindex cannot be turned off, every capability-token directory
-   needs an empty `index.html`.
+Both create state on the host, which is why the probe skips them.
+
+**1. Colour** — the one quality bug a photographer spots instantly and a client
+can never describe. If the ICC profile is dropped rather than converted to sRGB,
+saturated reds and greens go visibly flat.
+
+```sh
+scp DSC_1234.jpg you@host:probe.jpg
+ssh you@host 'sh -s -- probe.jpg' < scripts/colour-check.sh
+scp -r you@host:colour-check ./     # then look at them
+```
+
+**2. Streaming through Passenger** — this replaced the autoindex check when the
+download design changed, and it is the more important of the two. Everything is
+served by Node from outside the web root, so if Passenger buffers responses or
+times out a long request, large downloads break confusingly.
+
+```sh
+# a throwaway route doing res.sendFile() on a ~5 GB file under STORAGE_ROOT
+curl -o /dev/null https://galeria.aw-foto.pl/__streamtest   # completes? memory flat?
+curl -s -o /dev/null -w '%{http_code}\n' -r 0-100 \
+     https://galeria.aw-foto.pl/__streamtest                # expect 206
+```
+
+If that fails, the fallback is capability URLs on a `php` vhost — which was
+rejected on purpose, so it is a conversation rather than a silent switch.
 
 ### What the answers decided (see docs/host-facts.md for the results)
 
