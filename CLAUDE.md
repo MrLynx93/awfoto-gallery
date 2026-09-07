@@ -66,7 +66,7 @@ rsync-over-SSH GitHub Actions workflow.
 | **An image CLI** for resizing | **Do not use `sharp` as a normal dependency.** See below — this is the most misunderstood constraint in the project. |
 | **`zip` CLI** for archives | Same reasoning — shell out, don't use a native npm module. `archiver` (pure JS) is the fallback where the CLI can't be used. |
 | **Uppy + tus** for uploads | Resumable chunked upload is the one genuinely hard part. Use `tus-node-server` (pure JS, no native deps — matters on FreeBSD). |
-| **Capability URLs** for downloads | Node must never stream multi-GB files. Authorize in the app, hand the bytes to nginx. See "Download path". |
+| **Node serves every byte** | The files must not be browsable. No public docroot; `res.sendFile()` from outside the web root, with `Range` support. See "Download path". |
 | **MySQL** via `mysql2` | Pure JS driver, no native deps. The schema is three tables; nothing here wants Postgres. |
 | **`node:crypto` scrypt** for passwords | A real KDF, built into Node. Avoids `bcrypt` and `argon2`, both native. |
 
@@ -136,26 +136,58 @@ installed here, from a port; don't depend on it.)
 
 ## Download path
 
-`X-Accel-Redirect` was the original design, but mydevil's `nodejs` site type runs
-behind Passenger with no way to add an `internal` nginx location. The substitute
-achieves the same thing:
+**Nothing is reachable without going through Node.** There is no public file
+docroot. Originals, previews and ZIPs all live under `STORAGE_ROOT`, outside
+every vhost's web root, so no URL reaches them at all except an authorised
+application route. This is a product requirement, not an optimisation: the files
+must not be browsable.
 
-- Each gallery gets a 32-character random `file_token`. Its files live under a
-  separate vhost at `pliki.aw-foto.pl/f/<file_token>/`, created as
-  `devil www add pliki.aw-foto.pl php` — **there is no `static` type**; a php
-  site serves existing files straight from nginx and only routes `.php` to PHP.
-- **Because it is a php site, nothing user-named may land in that docroot with a
-  `.php` extension.** Originals are stored outside it entirely; only previews
-  (machine-generated names) and the ZIP go in, and the ZIP name is sanitised to
-  `[A-Za-z0-9._-]` with `.zip` forced.
-- Node checks the password, then `302`s to that path. nginx serves the bytes and
-  Node is out of the transfer entirely.
-- The path is unguessable, dies when the directory is deleted at expiry, and can be
-  rotated without changing the gallery's public link.
-- **Single-photo download is the exception.** The HTML `download` attribute is
-  ignored cross-origin, so a JPEG served from `pliki.` would open inline instead of
-  saving. Single photos (~8 MB) are streamed by Node with a proper
-  `Content-Disposition`. That is cheap and correct.
+Two earlier designs were tried and dropped:
+
+- **`X-Accel-Redirect`** — unavailable. mydevil's `nodejs` sites run behind
+  Passenger with no way to add an `internal` nginx location.
+- **Capability URLs on a second `php` vhost** — technically sound (a 32-char
+  token is unguessable, and the probe confirmed `.php` matching is anchored so a
+  `.zip` cannot execute), but rejected deliberately. An unguessable URL is still
+  a URL: it is bearer-authority, it leaks through referrers, browser history and
+  forwarded messages, and it cannot be revoked per-viewer. The `pliki` vhost is
+  not part of the design.
+
+Every route checks the gallery session cookie and `expires_at` before a byte
+moves:
+
+| Route | Serves |
+|---|---|
+| `/g/:slug/p/:photo/thumb.jpg` | grid preview |
+| `/g/:slug/p/:photo/large.jpg` | lightbox preview |
+| `/g/:slug/photo/:photo` | one original, `Content-Disposition: attachment` |
+| `/g/:slug/zip` | the whole archive, as an attachment |
+
+### On "Node must never stream multi-GB files"
+
+Earlier drafts of this file said that. It is **half true, and the half that is
+false matters here.**
+
+What is true: never *buffer* a file into memory, and never load one into a
+`Buffer` before sending.
+
+What is false: that streaming itself is expensive. Node's file streaming is
+asynchronous I/O with backpressure — roughly a 64 KB buffer per connection, and
+one process serves many concurrent downloads without blocking its event loop. A
+download does not occupy a process the way a CPU-bound task does. Against the
+40-process cap, ten simultaneous client downloads are ten sockets in one
+process, not ten processes.
+
+So use `res.sendFile()`, which also gives **`Range` support for free** — and
+that genuinely matters: a client on a phone whose 6 GB wedding download drops at
+80% can resume rather than restart.
+
+**The real risk is not memory, it is Passenger.** If Passenger buffers responses
+or imposes a request timeout, a large download breaks in a way that looks
+mysterious. That is why a large-file streaming test is a Milestone 1 task,
+before any feature depends on it — not a Milestone 5 surprise. Keep the fallback
+in mind until it passes: capability URLs on a `php` vhost would work, at the
+cost of the browsability the photographer explicitly does not want.
 
 ## Storage and the disk budget
 
