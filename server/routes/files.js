@@ -19,6 +19,7 @@ import {
   originalPath,
   archivePath,
 } from '../storage.js';
+import { findBySlug, isExpired } from '../galleries.js';
 import { galleryCookieName, hasGalleryAccess } from '../sessions.js';
 
 export const filesRouter = express.Router();
@@ -32,15 +33,11 @@ export const filesRouter = express.Router();
 async function authorise(req, res) {
   const { slug } = req.params;
 
-  let gallery;
-  try {
-    gallery = await readManifest(slug);
-  } catch {
-    res.status(404).end();
-    return null;
-  }
-
-  if (gallery.expiresAt && new Date(gallery.expiresAt).getTime() < Date.now()) {
+  // The database decides existence and expiry, not the files on disk. A gallery
+  // is condemned by its row before the sweep unlinks anything, so checking the
+  // manifest here would keep serving photos for a gallery already marked dead.
+  const gallery = await findBySlug(slug);
+  if (!gallery || isExpired(gallery)) {
     res.status(404).end();
     return null;
   }
@@ -95,10 +92,16 @@ filesRouter.get('/g/:slug/p/:index/:file', async (req, res) => {
 });
 
 filesRouter.get('/g/:slug/photo/:index', async (req, res) => {
-  const gallery = await authorise(req, res);
-  if (!gallery) return;
+  if (!(await authorise(req, res))) return;
 
-  const photo = gallery.photos?.[Number(req.params.index)];
+  // The filename comes from the manifest, so a caller cannot name the file it
+  // wants -- only its position in the gallery.
+  let photo;
+  try {
+    photo = (await readManifest(req.params.slug)).photos?.[Number(req.params.index)];
+  } catch {
+    return res.status(404).end();
+  }
   if (!photo) return res.status(404).end();
 
   // The filename she exported from Lightroom is what the client expects to see

@@ -50,6 +50,7 @@ if (/\/domains\/[^/]+\/(public_html|public_nodejs)/.test(STORAGE_ROOT)) {
 export function dbConfig() {
   return {
     host: optional('DB_HOST', 'localhost'),
+    port: Number(optional('DB_PORT', '3306')),
     database: required('DB_NAME'),
     user: required('DB_USER'),
     password: required('DB_PASSWORD'),

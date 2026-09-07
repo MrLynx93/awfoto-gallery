@@ -1,0 +1,65 @@
+---
+/**
+ * The photographer's login. One password, one field.
+ *
+ * A session cookie rather than HTTP Basic: the browser's Basic dialog cannot be
+ * written in Polish, cannot be styled, and is awkward to dismiss on a phone —
+ * and this screen is used by someone for whom every extra step is a real cost.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { verify } from '../../../server/passwords.js';
+import { adminPasswordHash } from '../../../server/config.js';
+import { ADMIN_COOKIE, issueAdmin, isAdmin, cookieOptions, ADMIN_TTL } from '../../../server/sessions.js';
+
+if (isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
+  return Astro.redirect('/admin');
+}
+
+let failed = false;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (await verify(String(form.get('password') || ''), adminPasswordHash())) {
+    Astro.cookies.set(ADMIN_COOKIE, issueAdmin(), cookieOptions(ADMIN_TTL));
+    return Astro.redirect('/admin');
+  }
+  failed = true;
+}
+---
+
+<BaseLayout title="Logowanie">
+  <section class="login">
+    <h1>Panel zdjęć</h1>
+    <p>Wpisz hasło, żeby wysłać zdjęcia klientowi.</p>
+
+    <form method="POST">
+      <label class="visually-hidden" for="password">Hasło</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus />
+      <button type="submit">Zaloguj</button>
+    </form>
+
+    {failed && <p class="error" role="alert">Hasło się nie zgadza. Spróbuj jeszcze raz.</p>}
+  </section>
+</BaseLayout>
+
+<style>
+  .login { max-width: 26rem; margin: clamp(2rem, 12vh, 7rem) auto; text-align: center; }
+  form { display: flex; flex-direction: column; gap: 0.9rem; margin: 2rem auto 0; max-width: 18rem; }
+  input {
+    font-family: var(--body); font-size: 1.1rem; padding: 0.7em 0.8em;
+    border: 1px solid var(--taupe); border-radius: 3px;
+    background: var(--biel); color: var(--tekst);
+  }
+  input:focus-visible { outline: 2px solid var(--glina); outline-offset: 2px; border-color: transparent; }
+  button {
+    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 1em 1.8em; border: 0; border-radius: 3px;
+    background: var(--glina); color: var(--biel); cursor: pointer; transition: background 0.25s;
+  }
+  button:hover { background: var(--glina-ciemna); }
+  .error { color: var(--glina-ciemna); font-size: 0.9rem; margin-top: 1.2rem; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+</style>

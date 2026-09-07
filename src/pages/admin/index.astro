@@ -1,0 +1,150 @@
+---
+/**
+ * The dashboard: which galleries are live, how much disk they are using, and
+ * how long each has left.
+ *
+ * The disk bar is the point of this screen as much as the list is. 15 GB is the
+ * project's real constraint, and `df` on this host reports the shared pool
+ * rather than the account's quota — so the number here is the sum the
+ * application keeps, and it is the only honest view of how close things are.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { list, totalBytes } from '../../../server/galleries.js';
+import { diskBudgetBytes } from '../../../server/config.js';
+import { ADMIN_COOKIE, isAdmin } from '../../../server/sessions.js';
+
+if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
+  return Astro.redirect('/admin/login');
+}
+
+const galleries = await list();
+const used = await totalBytes();
+const usedFraction = Math.min(1, used / diskBudgetBytes);
+
+const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
+
+const daysLeft = (expiresAt) =>
+  Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
+
+const STATUS_LABEL = {
+  preparing: 'przygotowuję',
+  ready: 'gotowa',
+  failed: 'błąd',
+  zip_unavailable: 'bez ZIP-a',
+};
+---
+
+<BaseLayout title="Panel" wide={true}>
+  <header class="head">
+    <h1>Galerie</h1>
+    <a class="cta" href="/admin/nowa">Nowa galeria</a>
+  </header>
+
+  <section class="disk" aria-label="Wykorzystanie dysku">
+    <div class="disk-line">
+      <span>{gb(used)} GB z {gb(diskBudgetBytes)} GB</span>
+      <span class="muted">{Math.round(usedFraction * 100)}%</span>
+    </div>
+    <div class="bar">
+      <div
+        class="bar-fill"
+        data-level={usedFraction > 0.9 ? 'critical' : usedFraction > 0.7 ? 'warning' : 'ok'}
+        style={`width: ${Math.max(1, usedFraction * 100)}%`}
+      />
+    </div>
+    <p class="muted small">
+      Galerie kasują się same po upływie terminu. Jeśli robi się ciasno, usuń
+      starszą sesję ręcznie.
+    </p>
+  </section>
+
+  {
+    galleries.length === 0 ? (
+      <p class="empty">Nie ma jeszcze żadnej galerii. Zacznij od „Nowa galeria”.</p>
+    ) : (
+      <table>
+        <thead>
+          <tr>
+            <th>Klient</th>
+            <th>Sesja</th>
+            <th>Zdjęcia</th>
+            <th>Rozmiar</th>
+            <th>Wygasa</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {galleries.map((gallery) => (
+            <tr>
+              <td>
+                <a href={`/g/${gallery.slug}`}>{gallery.clientName}</a>
+              </td>
+              <td class="muted">{gallery.shootDate ?? '—'}</td>
+              <td class="num">{gallery.photoCount}</td>
+              <td class="num">{gb(gallery.bytesTotal)} GB</td>
+              <td class={gallery.expired ? 'expired' : ''}>
+                {gallery.expired ? 'wygasła' : `za ${daysLeft(gallery.expiresAt)} dni`}
+              </td>
+              <td>
+                <span class="status" data-status={gallery.status}>
+                  {STATUS_LABEL[gallery.status] ?? gallery.status}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+</BaseLayout>
+
+<style>
+  .head {
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem;
+  }
+  .head h1 { margin: 0; }
+
+  .cta {
+    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
+    background: var(--glina); color: var(--biel); text-decoration: none;
+    transition: background 0.25s;
+  }
+  .cta:hover { background: var(--glina-ciemna); }
+
+  .disk { margin-bottom: 2.5rem; }
+  .disk-line {
+    display: flex; justify-content: space-between;
+    font-size: 0.9rem; margin-bottom: 0.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar { height: 6px; background: var(--piaskowy); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; background: var(--szalwia); }
+  .bar-fill[data-level='warning'] { background: var(--glina); }
+  .bar-fill[data-level='critical'] { background: var(--glina-ciemna); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th {
+    text-align: left; font-weight: 500; font-size: 0.72rem;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--tekst-jasny);
+    padding: 0 0.8rem 0.6rem; border-bottom: 1px solid var(--piaskowy);
+  }
+  td { padding: 0.85rem 0.8rem; border-bottom: 1px solid var(--bez); }
+  td a { color: var(--tekst); text-decoration: none; border-bottom: 1px solid var(--taupe); }
+  td a:hover { color: var(--glina-ciemna); }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--tekst-jasny); }
+  .small { font-size: 0.82rem; margin-top: 0.7rem; }
+  .expired { color: var(--glina-ciemna); }
+  .empty { color: var(--tekst-jasny); padding: 3rem 0; text-align: center; }
+
+  /* State reads at a glance, not only as a word. */
+  .status {
+    display: inline-block; font-size: 0.72rem; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 0.3em 0.7em; border-radius: 999px;
+    background: var(--bez); color: var(--tekst-jasny);
+  }
+  .status[data-status='ready'] { background: #e7ece2; color: #55604a; }
+  .status[data-status='failed'] { background: #f0e0d8; color: var(--glina-ciemna); }
+</style>

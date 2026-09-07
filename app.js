@@ -21,9 +21,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handler as astroHandler } from './dist/server/entry.mjs';
 import { filesRouter } from './server/routes/files.js';
+import { migrate } from './server/db.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.join(root, 'dist', 'client');
+
+// Migrations run at startup: the deploy is an rsync and a restart, with no
+// natural place to hang a migrate step, and a schema lagging the code deployed
+// with it is the worse failure. Passenger surfaces a startup crash clearly.
+await migrate();
 
 const app = express();
 app.disable('x-powered-by');

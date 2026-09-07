@@ -14,6 +14,8 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import GalleryGrid from '../../components/GalleryGrid.astro';
 import Lightbox from '../../components/Lightbox.astro';
 import { readManifest } from '../../../server/storage.js';
+import { findBySlug, isExpired } from '../../../server/galleries.js';
+import * as rateLimit from '../../../server/rate-limit.js';
 import { verify } from '../../../server/passwords.js';
 import {
   galleryCookieName,
@@ -25,35 +27,55 @@ import {
 
 const { slug } = Astro.params;
 
-let gallery = null;
-try {
-  gallery = await readManifest(slug);
-} catch {
-  // No such gallery, or its files are gone. Either way the client sees the same
-  // page as an expired one: a link that no longer works needs an explanation,
-  // and distinguishing "never existed" from "expired" only helps someone
-  // probing for valid slugs.
-}
-
-const expired =
-  gallery?.expiresAt && new Date(gallery.expiresAt).getTime() < Date.now();
+// The database is the index: it decides whether this gallery exists, whether it
+// still lives, and what password opens it. A gallery that never existed and one
+// that expired give the same page -- telling them apart only helps someone
+// probing for valid slugs.
+const gallery = await findBySlug(slug);
+const expired = isExpired(gallery);
 
 const cookieName = galleryCookieName(slug);
 let authorised = hasGalleryAccess(Astro.cookies.get(cookieName)?.value, slug);
 let wrongPassword = false;
+let blockedFor = 0;
 
-if (Astro.request.method === 'POST' && gallery && !expired) {
-  const form = await Astro.request.formData();
-  const submitted = String(form.get('password') || '');
+if (Astro.request.method === 'POST' && !authorised) {
+  // Behind Passenger, the client address arrives in X-Forwarded-For.
+  const ip =
+    Astro.request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    Astro.clientAddress;
 
-  if (await verify(submitted, gallery.passwordHash)) {
-    Astro.cookies.set(cookieName, issueGallery(slug), cookieOptions(GALLERY_TTL));
-    authorised = true;
+  // Checked before the password is even looked at, and counted against the slug
+  // whether or not it names a real gallery -- a scan across invented slugs is
+  // exactly what this should notice.
+  const allowance = await rateLimit.check(slug, ip);
+
+  if (!allowance.allowed) {
+    blockedFor = allowance.retryAfterMinutes;
   } else {
-    wrongPassword = true;
-    // Milestone 2 adds the DB-backed attempt limiter here. It has to be in the
-    // database rather than in memory: Passenger runs several processes, so a
-    // per-process counter would let an attacker simply keep reconnecting.
+    const form = await Astro.request.formData();
+    const submitted = String(form.get('password') || '');
+
+    if (gallery && !expired && (await verify(submitted, gallery.passwordHash))) {
+      await rateLimit.clear(slug, ip);
+      Astro.cookies.set(cookieName, issueGallery(slug), cookieOptions(GALLERY_TTL));
+      authorised = true;
+    } else {
+      await rateLimit.record(slug, ip);
+      wrongPassword = true;
+    }
+  }
+}
+
+// Per-photo detail lives in the manifest the worker writes; the row above says
+// whether we are allowed to look at it at all.
+let photos = [];
+if (authorised && gallery?.status === 'ready') {
+  try {
+    photos = (await readManifest(slug)).photos ?? [];
+  } catch {
+    // Row says ready but the manifest is unreadable -- treat it as still
+    // preparing rather than showing a grid of broken images.
   }
 }
 
@@ -102,13 +124,19 @@ const dateLabel = gallery?.shootDate
           <button type="submit">Otwórz galerię</button>
         </form>
 
+        {blockedFor > 0 && (
+          <p class="error" id="password-error" role="alert">
+            Za dużo prób. Spróbuj ponownie za {blockedFor} min. Jeśli zgubiłaś
+            lub zgubiłeś hasło — napisz do mnie, wyślę je ponownie.
+          </p>
+        )}
         {wrongPassword && (
           <p class="error" id="password-error" role="alert">
             Hasło się nie zgadza. Sprawdź, czy nie ma dodatkowej spacji na końcu.
           </p>
         )}
       </section>
-    ) : gallery.status !== 'ready' ? (
+    ) : gallery.status !== 'ready' || photos.length === 0 ? (
       <section class="message">
         <h1>Przygotowuję Twoje zdjęcia</h1>
         <p>
@@ -125,11 +153,11 @@ const dateLabel = gallery?.shootDate
             {dateLabel && <p class="date">{dateLabel}</p>}
           </div>
           <a class="download" href={`/g/${slug}/zip`}>
-            Pobierz wszystkie ({gallery.photos.length})
+            Pobierz wszystkie ({photos.length})
           </a>
         </header>
 
-        <GalleryGrid slug={slug} count={gallery.photos.length} />
+        <GalleryGrid slug={slug} count={photos.length} />
         <Lightbox />
 
         <p class="hint">
@@ -140,10 +168,6 @@ const dateLabel = gallery?.shootDate
     )
   }
 </BaseLayout>
-
-{gallery && !expired && gallery.status !== 'ready' && (
-  <meta http-equiv="refresh" content="20" slot="head" />
-)}
 
 <style>
   .message,

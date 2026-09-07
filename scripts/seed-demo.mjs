@@ -19,7 +19,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 
-import { hash, generatePassword } from '../server/passwords.js';
+import { generatePassword } from '../server/passwords.js';
+import { create, markReady, findBySlug } from '../server/galleries.js';
+import { close } from '../server/db.js';
 import {
   galleryDir,
   originalsDir,
@@ -103,27 +105,36 @@ for (const [index, src] of sources.entries()) {
   photos.push({ index, filename, bytes: (await stat(src)).size });
 }
 
-// A real password, hashed the way a real one will be — the demo exercises the
-// actual gate rather than a bypass, so what is being looked at is what ships.
+// A real password, and a real row. The demo exercises the actual gate rather
+// than a bypass, so what is being looked at is what ships.
 const password = generatePassword();
+const { slug } = await create({
+  clientName: 'Zuzia i Marek',
+  shootDate: '2026-09-19',
+  password,
+  expiryDays: 30,
+});
 
+// The manifest carries per-photo detail; the row carries everything the
+// gallery is authorised against.
 await writeFile(
   manifestPath(GALLERY_ID),
-  JSON.stringify(
-    {
-      id: GALLERY_ID,
-      clientName: 'Zuzia i Marek',
-      shootDate: '2026-09-19',
-      status: 'ready',
-      expiresAt: new Date(Date.now() + 30 * 864e5).toISOString(),
-      passwordHash: await hash(password),
-      photos,
-    },
-    null,
-    2,
-  ) + '\n',
+  JSON.stringify({ id: GALLERY_ID, slug, photos }, null, 2) + '\n',
 );
+
+const bytesTotal = photos.reduce((sum, photo) => sum + photo.bytes, 0);
+await markReady(slug, { photoCount: photos.length, bytesTotal });
 
 console.log(`Seeded ${photos.length} photos into ${galleryDir(GALLERY_ID)}`);
 console.log(cli ? `Derivatives via ${cli}.` : 'No image CLI here — originals copied as previews.');
-console.log(`\n  Link:     /g/${GALLERY_ID}\n  Password: ${password}\n`);
+console.log(`\n  Link:     /g/${slug}\n  Password: ${password}\n`);
+
+// The gallery directory is named by the slug the database issued, so the two
+// cannot drift apart.
+if (slug !== GALLERY_ID) {
+  const { rename } = await import('node:fs/promises');
+  await rm(galleryDir(slug), { recursive: true, force: true });
+  await rename(galleryDir(GALLERY_ID), galleryDir(slug));
+}
+
+await close();
