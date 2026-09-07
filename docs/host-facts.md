@@ -56,6 +56,17 @@ tasks:
 - **Colour.** Resize a real Adobe RGB Lightroom export with the exact `magick`
   command `images.js` will use and compare side by side. `lcms` being present
   proves it *can* be done right, not that it *is*.
-- **Autoindex** on the new `pliki.` php vhost — confirm a directory does not
-  list its own contents. If it does, the worker writes an empty `index.html`
-  into each token directory.
+- ~~**Autoindex**~~ — **CONFIRMED ON.** `curl https://pliki.aw-foto.pl/f/<token>/`
+  lists the directory contents. `.htaccess` is not a remedy: mydevil's php sites
+  are nginx, which ignores it. Still to determine: whether `/` and `/f/` also
+  list (that is the serious case — it would make every gallery enumerable
+  without a token), and whether `devil www` exposes an autoindex toggle.
+
+  **Severity note.** A listing at `/f/<token>/` is close to harmless: reaching it
+  requires the 32-character token, and whoever holds that is the client, who is
+  entitled to every file in the directory anyway. It leaks original filenames,
+  which the ZIP would reveal regardless. A listing at `/f/` or `/` is the real
+  problem.
+
+  **Mitigation:** the worker writes an empty `index.html` into the docroot, into
+  `f/`, and into every token directory it creates.
