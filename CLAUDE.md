@@ -104,9 +104,20 @@ What is actually on the host (probed, not assumed):
   bits per channel, which is where the memory goes. A 45 MP file extrapolates to
   ~800 MB, so run `-limit memory 512MiB -limit map 1GiB` and strictly one at a
   time. Never fork a second converter — see the 40-process cap.
-- **Convert to sRGB, don't strip.** `-strip` removes the ICC profile, which turns an
-  Adobe RGB export flat. This is the one quality bug the photographer notices
-  instantly and the client can never describe.
+- **Convert with `-profile`, not `-colorspace`, and never `-strip`.** Measured on
+  a wide-gamut source: `-strip` and `-colorspace sRGB` produced *identical*
+  pixels (mean RGB 127.6/119.1/34.0), while `-profile srgb.icc` actually
+  remapped them (95.9/69.5/0.5). **`-colorspace sRGB` does not convert an
+  ICC-tagged image** — it is close to a no-op, and an earlier draft of
+  `images.js` used it believing otherwise. Only `-profile` runs the transform
+  through lcms.
+
+  `server/images.js` looks for an sRGB profile on the host (override with
+  `SRGB_PROFILE`) and converts when it finds one. With no profile it
+  deliberately does nothing and warns, leaving the source profile embedded —
+  correct in every colour-managed browser. It never falls back to `-strip`,
+  which leaves wide-gamut pixels labelled sRGB: the flat, desaturated result
+  the photographer notices instantly and the client can never describe.
 - `sharp`'s wasm32 build stays documented as a fallback, but is not needed.
 
 All of this lives behind one module, `server/images.js`, exporting

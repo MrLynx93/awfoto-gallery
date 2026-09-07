@@ -50,8 +50,28 @@ fi
 # B — keeps whatever profile came in. Right in colour-managed browsers, wrong in
 #     anything that assumes sRGB.
 "$IM" "$SRC" -auto-orient -resize 2048x2048 -quality 82 "$OUT/b-keep.jpg" 2>/dev/null
-# C — converts to sRGB and keeps a profile. The candidate for production.
-"$IM" "$SRC" -auto-orient -colorspace sRGB -resize 2048x2048 -quality 82 "$OUT/c-srgb.jpg" 2>/dev/null
+# C -- converts to sRGB through lcms. This is what production runs.
+#
+# Note it uses -profile, not -colorspace. Measured locally on a wide-gamut
+# source, -colorspace sRGB left pixels byte-identical to -strip; only -profile
+# performs the transform. If no profile is found the command degrades to B
+# (keep the source profile), which is correct in colour-managed browsers.
+ICC=""
+for candidate in "${SRGB_PROFILE:-}" \
+    /usr/local/share/ImageMagick-7/sRGB.icc \
+    /usr/local/share/color/icc/sRGB.icc \
+    /usr/share/color/icc/sRGB.icc; do
+  [ -n "$candidate" ] && [ -f "$candidate" ] && { ICC="$candidate"; break; }
+done
+
+if [ -n "$ICC" ]; then
+  printf '\n  sRGB profile: %s\n' "$ICC"
+  "$IM" "$SRC" -auto-orient -profile "$ICC" -resize 2048x2048 -quality 82 "$OUT/c-srgb.jpg" 2>/dev/null
+else
+  printf '\n  !! No sRGB profile found on this host. Production will keep the\n'
+  printf '     source profile rather than convert. Set SRGB_PROFILE if you have one.\n'
+  "$IM" "$SRC" -auto-orient -resize 2048x2048 -quality 82 "$OUT/c-srgb.jpg" 2>/dev/null
+fi
 
 printf '\nVARIANTS in %s\n' "$OUT"
 for f in a-strip b-keep c-srgb; do
