@@ -1,0 +1,250 @@
+---
+/**
+ * The client's gallery: the only page anyone outside the business ever sees.
+ *
+ * One screen, three states — the password gate, the "still preparing" wait, and
+ * the grid. An expired gallery gets a warm explanation rather than a 404, per
+ * CLAUDE.md: the client did nothing wrong and should not meet an error page.
+ *
+ * Reads the gallery from the manifest the worker writes. The database becomes
+ * the index in Milestone 2; this page will change where it looks up a gallery,
+ * not what it does with one.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import GalleryGrid from '../../components/GalleryGrid.astro';
+import Lightbox from '../../components/Lightbox.astro';
+import { readManifest } from '../../../server/storage.js';
+import { verify } from '../../../server/passwords.js';
+import {
+  galleryCookieName,
+  hasGalleryAccess,
+  issueGallery,
+  cookieOptions,
+  GALLERY_TTL,
+} from '../../../server/sessions.js';
+
+const { slug } = Astro.params;
+
+let gallery = null;
+try {
+  gallery = await readManifest(slug);
+} catch {
+  // No such gallery, or its files are gone. Either way the client sees the same
+  // page as an expired one: a link that no longer works needs an explanation,
+  // and distinguishing "never existed" from "expired" only helps someone
+  // probing for valid slugs.
+}
+
+const expired =
+  gallery?.expiresAt && new Date(gallery.expiresAt).getTime() < Date.now();
+
+const cookieName = galleryCookieName(slug);
+let authorised = hasGalleryAccess(Astro.cookies.get(cookieName)?.value, slug);
+let wrongPassword = false;
+
+if (Astro.request.method === 'POST' && gallery && !expired) {
+  const form = await Astro.request.formData();
+  const submitted = String(form.get('password') || '');
+
+  if (await verify(submitted, gallery.passwordHash)) {
+    Astro.cookies.set(cookieName, issueGallery(slug), cookieOptions(GALLERY_TTL));
+    authorised = true;
+  } else {
+    wrongPassword = true;
+    // Milestone 2 adds the DB-backed attempt limiter here. It has to be in the
+    // database rather than in memory: Passenger runs several processes, so a
+    // per-process counter would let an attacker simply keep reconnecting.
+  }
+}
+
+const dateLabel = gallery?.shootDate
+  ? new Date(gallery.shootDate).toLocaleDateString('pl-PL', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  : null;
+---
+
+<BaseLayout title={gallery?.clientName ?? 'Galeria'} wide={authorised}>
+  {
+    !gallery || expired ? (
+      <section class="message">
+        <h1>Ta galeria wygasła</h1>
+        <p>
+          Zdjęcia są przechowywane przez ograniczony czas i te zostały już
+          usunięte. Jeśli potrzebujesz ich ponownie, napisz do mnie — chętnie
+          pomogę.
+        </p>
+        <p class="contact">
+          <a href="https://aw-foto.pl/kontakt">aw-foto.pl/kontakt</a>
+        </p>
+      </section>
+    ) : !authorised ? (
+      <section class="gate">
+        <h1>{gallery.clientName}</h1>
+        {dateLabel && <p class="date">{dateLabel}</p>}
+        <p>Wpisz hasło, które otrzymałaś lub otrzymałeś razem z linkiem.</p>
+
+        <form method="POST">
+          <label class="visually-hidden" for="password">Hasło</label>
+          <input
+            id="password"
+            name="password"
+            type="text"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            required
+            autofocus
+            aria-describedby={wrongPassword ? 'password-error' : undefined}
+          />
+          <button type="submit">Otwórz galerię</button>
+        </form>
+
+        {wrongPassword && (
+          <p class="error" id="password-error" role="alert">
+            Hasło się nie zgadza. Sprawdź, czy nie ma dodatkowej spacji na końcu.
+          </p>
+        )}
+      </section>
+    ) : gallery.status !== 'ready' ? (
+      <section class="message">
+        <h1>Przygotowuję Twoje zdjęcia</h1>
+        <p>
+          Zdjęcia są już na serwerze i właśnie się przetwarzają. To zwykle kilka
+          minut. Ta strona odświeży się sama.
+        </p>
+        <p class="contact">Możesz spokojnie zamknąć okno i wrócić później.</p>
+      </section>
+    ) : (
+      <>
+        <header class="gallery-head">
+          <div>
+            <h1>{gallery.clientName}</h1>
+            {dateLabel && <p class="date">{dateLabel}</p>}
+          </div>
+          <a class="download" href={`/g/${slug}/zip`}>
+            Pobierz wszystkie ({gallery.photos.length})
+          </a>
+        </header>
+
+        <GalleryGrid slug={slug} count={gallery.photos.length} />
+        <Lightbox />
+
+        <p class="hint">
+          Kliknij zdjęcie, aby powiększyć. Pojedyncze zdjęcie pobierzesz
+          strzałką w podglądzie.
+        </p>
+      </>
+    )
+  }
+</BaseLayout>
+
+{gallery && !expired && gallery.status !== 'ready' && (
+  <meta http-equiv="refresh" content="20" slot="head" />
+)}
+
+<style>
+  .message,
+  .gate {
+    max-width: 32rem;
+    margin: clamp(2rem, 10vh, 6rem) auto;
+    text-align: center;
+  }
+
+  .date {
+    color: var(--tekst-jasny);
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin: -0.4em 0 1.6em;
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    margin: 2rem auto 0;
+    max-width: 18rem;
+  }
+
+  input {
+    font-family: var(--body);
+    font-size: 1.35rem;
+    letter-spacing: 0.22em;
+    text-align: center;
+    text-transform: uppercase;
+    padding: 0.7em 0.5em;
+    border: 1px solid var(--taupe);
+    border-radius: 3px;
+    background: var(--biel);
+    color: var(--tekst);
+  }
+  input:focus-visible {
+    outline: 2px solid var(--glina);
+    outline-offset: 2px;
+    border-color: transparent;
+  }
+
+  button,
+  .download {
+    font-family: var(--body);
+    font-size: 0.82rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 1em 1.8em;
+    border: 0;
+    border-radius: 3px;
+    background: var(--glina);
+    color: var(--biel);
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    transition: background 0.25s;
+  }
+  button:hover,
+  .download:hover {
+    background: var(--glina-ciemna);
+  }
+
+  .error {
+    color: var(--glina-ciemna);
+    font-size: 0.9rem;
+    margin-top: 1.2rem;
+  }
+
+  .gallery-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-bottom: clamp(1.5rem, 4vw, 2.5rem);
+  }
+  .gallery-head h1 {
+    margin-bottom: 0.15em;
+  }
+
+  .hint {
+    margin-top: 2rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--tekst-jasny);
+  }
+
+  .contact {
+    margin-top: 1.5rem;
+    font-size: 0.9rem;
+    color: var(--tekst-jasny);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+</style>

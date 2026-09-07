@@ -20,6 +20,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handler as astroHandler } from './dist/server/entry.mjs';
+import { filesRouter } from './server/routes/files.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.join(root, 'dist', 'client');
@@ -65,6 +66,11 @@ if (process.env.STREAM_TEST_FILE) {
     });
   });
 }
+
+// Photos, previews and archives. Mounted before the static handlers and the
+// Astro handler, because these paths are not files in any docroot -- they are
+// authorised reads from outside the web root.
+app.use(filesRouter);
 
 // Hashed build assets never change under the same name, so they cache hard.
 app.use(

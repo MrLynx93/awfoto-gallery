@@ -1,0 +1,79 @@
+---
+/**
+ * The client's photo grid.
+ *
+ * Adapted from awfoto-site's PhotoGallery.astro, which uses `astro:assets` —
+ * that cannot work here, because these photos are runtime uploads rather than
+ * build-time assets. Astro never sees them, so the markup is a plain <img>
+ * pointing at the authenticated preview route and the derivatives are made by
+ * the worker instead of by the build.
+ *
+ * The `data-lightbox-index` and `#photo-grid` contract is kept exactly, so
+ * Lightbox.astro works unchanged.
+ */
+interface Props {
+  slug: string;
+  count: number;
+}
+
+const { slug, count } = Astro.props;
+const photos = Array.from({ length: count }, (_, index) => index);
+---
+
+<div class="photo-grid" id="photo-grid">
+  {
+    photos.map((index) => (
+      <button
+        class="photo"
+        type="button"
+        data-lightbox-index={index}
+        aria-label={`Powiększ zdjęcie ${index + 1} z ${count}`}
+      >
+        <img
+          src={`/g/${slug}/p/${index}/thumb.jpg`}
+          srcset={`/g/${slug}/p/${index}/thumb.jpg 500w, /g/${slug}/p/${index}/large.jpg 2048w`}
+          sizes="(max-width: 700px) 50vw, 25vw"
+          alt={`Zdjęcie ${index + 1}`}
+          loading={index < 4 ? 'eager' : 'lazy'}
+          decoding="async"
+        />
+      </button>
+    ))
+  }
+</div>
+
+<style>
+  .photo-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(0.5rem, 1.4vw, 1rem);
+  }
+  @media (max-width: 700px) {
+    .photo-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .photo {
+    padding: 0;
+    border: 0;
+    background: var(--bez);
+    cursor: zoom-in;
+    overflow: hidden;
+    border-radius: 3px;
+    aspect-ratio: 1;
+  }
+  .photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.6s cubic-bezier(0.2, 0, 0.2, 1);
+  }
+  .photo:hover img {
+    transform: scale(1.04);
+  }
+  .photo:focus-visible {
+    outline: 2px solid var(--glina);
+    outline-offset: 3px;
+  }
+</style>
