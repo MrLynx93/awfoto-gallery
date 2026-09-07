@@ -82,7 +82,41 @@ tasks:
   execute regardless of what precedes it, and `evil.php.zip` is inert. That
   closes the hole structurally instead of relying on a sanitiser being correct.
 
-  **Still to verify:** that the anchor is actually there. If mydevil uses an
-  unanchored `~ \.php`, `evil.php.zip` WOULD execute and sanitising becomes
-  load-bearing rather than belt-and-braces. Test:
-  `echo '<?php echo 9;' > f/<t>/y.php.zip && curl .../y.php.zip`.
+  **The anchor is confirmed present.** `y.php.zip` returns its own source text
+  rather than executing, so a name ending in an extension we chose cannot run,
+  whatever precedes it. The construction rule above therefore holds and the
+  sanitiser is belt-and-braces rather than the only line of defence.
+
+  **Path-info is enabled**: `x.php/foo.jpg` executes `x.php`. Standard nginx
+  `fastcgi_split_path_info` behaviour, and harmless here — it still requires a
+  real `.php` file on disk, and we never write one. It does not give `.zip` or
+  `.jpg` files a route to execution.
+
+  Net: **the files docroot is safe as long as no `.php` file ever exists in it**,
+  which the design guarantees by never writing a caller-supplied extension.
+
+## `devil www options` — no autoindex switch, but five settings that matter
+
+The full usage (the Milestone 0 probe truncated it) offers: `gzip`, `sslonly`,
+`plnet`, `php_eval`, `php_exec`, `php_openbasedir`, `cache`, `cache_cookie`,
+`cache_debug`, `waf`, `blacklist`, `stats_anonymize`, `stats_exclude`,
+`processes`, `tls_min`.
+
+**There is no autoindex option**, which settles it: directory listings are
+suppressed with `index.html` files written by the worker, at the docroot, at
+`f/`, and in every token directory.
+
+Five worth setting deliberately:
+
+| Option | Why |
+|---|---|
+| `processes 1+` | Caps Passenger workers on the app vhost. Directly relevant — the account allows only 40 processes total and the worker plus its `magick`/`zip` children compete for them. |
+| `cache` | Leave **off** on the files vhost. Token-addressed files are immutable, so caching looks attractive, but a cached ZIP outliving its deletion would quietly break the expiry promise, which is a day-one feature. |
+| `sslonly on` | Both vhosts. Gallery links go out by message and get clicked on phones. |
+| `php_openbasedir` | Defence in depth on the files vhost: confine PHP to that docroot, so even an unforeseen `.php` there cannot read the rest of the account. |
+| `waf 0-5` | **Suspect this first if tus uploads misbehave in M4.** A WAF inspecting large `PATCH` bodies is exactly the kind of thing that breaks resumable upload in a confusing way. |
+
+`php_eval` / `php_exec` most likely disable PHP's `eval()` and `exec()` families
+rather than PHP itself — worth one test, because if `php_exec off` turns PHP off
+wholesale, the files vhost becomes effectively static and the whole class of
+problem disappears.
