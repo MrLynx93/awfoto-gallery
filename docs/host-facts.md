@@ -70,3 +70,19 @@ tasks:
 
   **Mitigation:** the worker writes an empty `index.html` into the docroot, into
   `f/`, and into every token directory it creates.
+
+- **PHP executes in that docroot — CONFIRMED.** `<?php echo 42;` served from a
+  token directory returns `42`. So any attacker-controlled bytes landing there
+  under a `.php` name would be remote code execution on the account.
+
+  **The rule this forces:** every file the worker writes into the files docroot
+  gets an extension *we* append from a fixed allowlist — `.jpg`, `.zip`,
+  `.html` — never one taken from user input. nginx routes to PHP on
+  `location ~ \.php$`, anchored at the end, so a name ending in `.zip` cannot
+  execute regardless of what precedes it, and `evil.php.zip` is inert. That
+  closes the hole structurally instead of relying on a sanitiser being correct.
+
+  **Still to verify:** that the anchor is actually there. If mydevil uses an
+  unanchored `~ \.php`, `evil.php.zip` WOULD execute and sanitising becomes
+  load-bearing rather than belt-and-braces. Test:
+  `echo '<?php echo 9;' > f/<t>/y.php.zip && curl .../y.php.zip`.
