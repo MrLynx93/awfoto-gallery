@@ -11,7 +11,11 @@ See `CLAUDE.md` for the architecture and the reasoning behind the stack.
 
 ## Status
 
-Milestone 0 — host probe. Nothing is deployed yet.
+**Milestone 0 complete.** The host has been probed; results and the four findings
+that changed the design are in [`docs/host-facts.md`](docs/host-facts.md).
+Nothing is deployed yet.
+
+Next: Milestone 1 — scaffold, both vhosts, and the deploy pipeline.
 
 ## Milestone 0: probe the host
 
@@ -51,7 +55,7 @@ It deliberately skips anything that creates state on the host:
    contents. If autoindex cannot be turned off, every capability-token directory
    needs an empty `index.html`.
 
-### What the answers decide
+### What the answers decided (see docs/host-facts.md for the results)
 
 | Probe result | Consequence |
 |---|---|

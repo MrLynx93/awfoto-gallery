@@ -24,16 +24,34 @@ Two, with very different skill levels:
 
 Everything runs here. Key facts that shape the architecture:
 
+Measured on `s88.mydevil.net`, FreeBSD 14.3-RELEASE-p18, by
+`scripts/probe-host.sh`. Re-run it if anything below looks stale.
+
 - **FreeBSD**, not Linux. This is the single biggest source of gotchas.
 - Servers in Poland (good for latency and GDPR).
 - **Unlimited transfer** — no bandwidth concerns, which is why self-hosting won over
   Cloudflare R2.
 - SSH access, cron, long-running processes allowed.
 - nginx in front, with **Passenger** for `nodejs` site types.
-- MySQL / PostgreSQL / MongoDB available.
-- ~15 GB disk available. **This is the real constraint** — roughly two weddings live
-  at once.
-- 2 GB RAM, 70 concurrent processes, shared across the whole account.
+- MySQL / PostgreSQL / MongoDB available. `mysql` client present; **no database
+  exists yet**.
+- ~15 GB disk. **This is the real constraint** — roughly two weddings live at once.
+- **40 concurrent processes** and a **3 GB memory cap**, account-wide. Earlier
+  drafts of this file said 70 and 2 GB; both were wrong. The process cap is the
+  one that bites — Passenger workers, the background worker, cron and every
+  `magick`/`zip` subprocess all draw on the same 40.
+- `hw.physmem` (128 GB) and `hw.ncpu` (16) describe the **shared machine**, not
+  this account. Ignore them when sizing anything.
+- **`df` cannot see the account quota.** It reports the shared ZFS pool — 1.7 TB,
+  1.1 TB available. Any free-space check built on `df` will read "terabytes free"
+  and then fail with `ENOSPC`. See "Storage and the disk budget".
+- **The locale is `C`**, and `LANG` is unset. UTF-8 filenames round-trip fine at
+  the byte level, but set `LANG=pl_PL.UTF-8` in the app environment and pass
+  `-UN=UTF8` to `zip`, or Polish filenames inside an archive open as mojibake on
+  the client's Windows machine.
+- **There is no `static` site type.** `devil www` offers php, python, ruby,
+  nodejs, proxy, pointer — and `aw-foto.pl` is in fact a **php** site serving the
+  static build. awfoto-site's README is wrong about this.
 
 The sibling repo `MrLynx93/awfoto-site` runs on this same host and is the reference
 for everything deployment-shaped: `app.js` under Passenger, `devil www add`, and the
@@ -73,18 +91,23 @@ The JS options and why each one loses:
   memory profile, and EXIF orientation and ICC are yours to implement.
 - **`node-canvas`** — native bindings on cairo/pango. Strictly worse than sharp here.
 
-Practical notes:
+What is actually on the host (probed, not assumed):
 
-- **ImageMagick 7 renamed `convert` to `magick`.** Detect which exists; don't
-  hardcode either.
-- **If `vipsthumbnail` is on the host, prefer it** — faster and lighter than
-  ImageMagick for thumbnails, and colour-correct.
-- **If no image CLI exists at all**, `npm install --cpu=wasm32 sharp` is a real
-  fallback: sharp's official WASM build, no native compilation. Slower and
-  single-threaded, and FreeBSD is not a tested target, so probe it.
+- **ImageMagick 7.1.1-45 Q16-HDRI**, with `lcms` among its delegates — so ICC
+  handling works and Adobe RGB → sRGB is available. **Invoke `magick`.** A
+  `convert` shim also exists, so IM6 syntax would have silently worked while
+  being wrong.
+- **`vipsthumbnail` 8.17.1** is also installed. It is the alternate
+  implementation behind `makeDerivatives()` — one file away — and is worth
+  switching to if memory or speed ever argues for it.
+- **Measured: 438 MB peak RSS, 0.94 s** for one 24 MP resize. Q16-HDRI holds 16
+  bits per channel, which is where the memory goes. A 45 MP file extrapolates to
+  ~800 MB, so run `-limit memory 512MiB -limit map 1GiB` and strictly one at a
+  time. Never fork a second converter — see the 40-process cap.
 - **Convert to sRGB, don't strip.** `-strip` removes the ICC profile, which turns an
   Adobe RGB export flat. This is the one quality bug the photographer notices
   instantly and the client can never describe.
+- `sharp`'s wasm32 build stays documented as a fallback, but is not needed.
 
 All of this lives behind one module, `server/images.js`, exporting
 `makeDerivatives()`. Swapping implementations is a one-file change.
@@ -107,7 +130,9 @@ the gallery as "preparing" until the worker finishes.
 
 The worker is started two ways, both needed: the tus completion hook spawns it
 detached if a lockfile says it isn't already running, and a `*/5` cron re-runs it as
-a safety net after a crash or a restart. **FreeBSD ships `lockf(1)`, not `flock(1)`.**
+a safety net after a crash or a restart. Use **`lockf(1)`** — it is base system,
+so it cannot vanish under a package change. (`flock` also happens to be
+installed here, from a port; don't depend on it.)
 
 ## Download path
 
@@ -116,7 +141,13 @@ behind Passenger with no way to add an `internal` nginx location. The substitute
 achieves the same thing:
 
 - Each gallery gets a 32-character random `file_token`. Its files live under a
-  separate **static** vhost at `pliki.aw-foto.pl/f/<file_token>/`.
+  separate vhost at `pliki.aw-foto.pl/f/<file_token>/`, created as
+  `devil www add pliki.aw-foto.pl php` — **there is no `static` type**; a php
+  site serves existing files straight from nginx and only routes `.php` to PHP.
+- **Because it is a php site, nothing user-named may land in that docroot with a
+  `.php` extension.** Originals are stored outside it entirely; only previews
+  (machine-generated names) and the ZIP go in, and the ZIP name is sanitised to
+  `[A-Za-z0-9._-]` with `.zip` forced.
 - Node checks the password, then `302`s to that path. nginx serves the bytes and
   Node is out of the transfer entirely.
 - The path is unguessable, dies when the directory is deleted at expiry, and can be
@@ -126,15 +157,26 @@ achieves the same thing:
   saving. Single photos (~8 MB) are streamed by Node with a proper
   `Content-Disposition`. That is cheap and correct.
 
-## Storage and the disk guard
+## Storage and the disk budget
 
 A normal session is ~30 photos: ~240 MB of originals plus a ~240 MB ZIP is nothing.
 The doubling only bites at wedding scale (~800 photos ≈ 12.8 GB of ~15 GB).
 
-So: keep both, but before zipping, check free space against the sum of the originals
-plus a margin. If the ZIP won't fit, mark the gallery `zip_unavailable` and stream a
-store-mode ZIP on demand via `archiver` for that gallery only. The admin dashboard
-shows a disk-usage bar so this is visible before it bites.
+**Do not use `df` for this.** It reports the shared ZFS pool, not the account
+quota — it will say a terabyte is free right up until the write fails. The budget
+is explicit instead:
+
+- `DISK_BUDGET_GB` in `.env` (start at 12).
+- `server/disk.js` sums `galleries.bytes_total` for live galleries and refuses a
+  ZIP that would cross the budget.
+- Over budget, the gallery is marked `zip_unavailable` and streams a store-mode
+  ZIP on demand via `archiver` for that gallery only.
+- A nightly `du -s ~` reconciles the tally and logs drift. Once a night, not per
+  upload.
+- The admin dashboard shows usage against the budget, so it is visible early.
+
+This is testable without filling a disk: set the budget to 1 GB in dev and the
+whole path exercises in seconds.
 
 ## Expiry is a day-one feature, not a later one
 
@@ -193,7 +235,7 @@ worth the complexity here.
 - **Cloudflare R2** — a good fallback if transfer ever became a problem. It isn't,
   since mydevil transfer is unlimited.
 - **Nextcloud** — works, but the client lands in a file manager. Heavy tenant inside
-  a 2 GB RAM cap, and on-demand preview generation makes the first client wait.
+  a 3 GB RAM cap, and on-demand preview generation makes the first client wait.
 - **Piwigo** — an archive with albums and tags. Per-client access is admin-panel
   clicking, batch download is a fragile plugin, and expiry isn't a concept it has.
 - **Pixieset / Pic-Time** — the sensible SaaS answer at $7–8/mo. Rejected in favour of
