@@ -1,0 +1,187 @@
+---
+/**
+ * Full-screen photo viewer for the session gallery. Reads the already-rendered
+ * <img> elements inside #photo-grid, so it needs no data of its own and adds no
+ * extra image requests — the browser reuses what it has already fetched.
+ */
+---
+
+<dialog class="lightbox" id="lightbox" aria-label="Podgląd zdjęcia">
+  <button class="lightbox-close" type="button" data-close aria-label="Zamknij">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="m5 5 14 14M19 5 5 19" />
+    </svg>
+  </button>
+
+  <button class="lightbox-nav lightbox-prev" type="button" data-step="-1" aria-label="Poprzednie zdjęcie">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="M15 4 7 12l8 8" />
+    </svg>
+  </button>
+
+  <figure>
+    <img id="lightbox-image" alt="" />
+    <figcaption id="lightbox-caption"></figcaption>
+  </figure>
+
+  <button class="lightbox-nav lightbox-next" type="button" data-step="1" aria-label="Następne zdjęcie">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="m9 4 8 8-8 8" />
+    </svg>
+  </button>
+</dialog>
+
+<style>
+  .lightbox {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: 0;
+    border: 0;
+    background: rgba(36, 30, 26, 0.97);
+    color: var(--bez);
+  }
+  .lightbox::backdrop {
+    background: rgba(36, 30, 26, 0.9);
+  }
+  .lightbox:not([open]) {
+    display: none;
+  }
+
+  .lightbox figure {
+    display: grid;
+    place-items: center;
+    gap: 1rem;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: clamp(2.5rem, 6vw, 4rem);
+  }
+  .lightbox img {
+    max-width: 100%;
+    max-height: calc(100dvh - 9rem);
+    width: auto;
+    object-fit: contain;
+  }
+  .lightbox figcaption {
+    font-size: 0.82rem;
+    letter-spacing: 0.1em;
+    color: #b4a99d;
+    text-align: center;
+    min-height: 1.2em;
+  }
+
+  .lightbox-close,
+  .lightbox-nav {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--bez);
+    cursor: pointer;
+    transition: background 0.25s;
+  }
+  .lightbox-close:hover,
+  .lightbox-nav:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  .lightbox-close svg,
+  .lightbox-nav svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .lightbox-close {
+    top: 1rem;
+    right: 1rem;
+    z-index: 2;
+  }
+  .lightbox-prev {
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .lightbox-next {
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  @media (max-width: 600px) {
+    .lightbox-prev {
+      left: 0.5rem;
+    }
+    .lightbox-next {
+      right: 0.5rem;
+    }
+  }
+</style>
+
+<script>
+  const dialog = document.getElementById('lightbox') as HTMLDialogElement | null;
+  const grid = document.getElementById('photo-grid');
+  const image = document.getElementById('lightbox-image') as HTMLImageElement | null;
+  const caption = document.getElementById('lightbox-caption');
+
+  if (dialog && grid && image && caption) {
+    const thumbs = Array.from(grid.querySelectorAll('img'));
+    let current = 0;
+
+    const show = (index: number) => {
+      // Wrap around, so the arrows never dead-end.
+      current = (index + thumbs.length) % thumbs.length;
+      const thumb = thumbs[current];
+
+      // Reuse the thumbnail's own srcset: the browser picks the largest source
+      // it needs for the full-screen size, and reuses anything already cached.
+      image.src = thumb.src;
+      image.srcset = thumb.srcset;
+      image.sizes = '100vw';
+      image.alt = thumb.alt;
+      caption.textContent =
+        thumbs.length > 1 ? `${current + 1} / ${thumbs.length}` : '';
+    };
+
+    grid.addEventListener('click', (event) => {
+      const trigger = (event.target as HTMLElement).closest('[data-lightbox-index]');
+      if (!trigger) return;
+      show(Number(trigger.getAttribute('data-lightbox-index')));
+      dialog.showModal();
+    });
+
+    dialog.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-close]')) {
+        dialog.close();
+        return;
+      }
+      const step = target.closest('[data-step]');
+      if (step) {
+        show(current + Number(step.getAttribute('data-step')));
+        return;
+      }
+      // A click on the backdrop area (the figure, not the image) closes it.
+      if (target === dialog || target.tagName === 'FIGURE') dialog.close();
+    });
+
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowRight') show(current + 1);
+      if (event.key === 'ArrowLeft') show(current - 1);
+      // Escape is handled natively by <dialog>.
+    });
+
+    // Return focus to the thumbnail that opened the viewer.
+    dialog.addEventListener('close', () => {
+      const button = grid.querySelector<HTMLButtonElement>(
+        `[data-lightbox-index="${current}"]`,
+      );
+      button?.focus();
+    });
+  }
+</script>

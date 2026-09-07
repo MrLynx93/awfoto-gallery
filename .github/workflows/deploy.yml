@@ -1,0 +1,66 @@
+name: build and deploy
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  APP_DOMAIN: ${{ vars.APP_DOMAIN || 'galeria.aw-foto.pl' }}
+
+concurrency:
+  # A newer push supersedes an in-flight deploy; never deploy out of order.
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Only the default branch deploys. Compared against the repo's actual
+    # default rather than a hardcoded name, so renaming it does not quietly
+    # stop every deploy.
+    if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 to match /usr/local/bin/node22 on the host. Building on a
+      # different major than the one that runs it is a needless risk.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          PUBLIC_BASE_URL: https://${{ env.APP_DOMAIN }}
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.MYDEVIL_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.MYDEVIL_HOST }}" >> ~/.ssh/known_hosts
+
+      # node_modules is reinstalled on the host (FreeBSD; the Linux tree here is
+      # not portable). `.env` holds the credentials and must survive. `storage/`
+      # is the clients' photos -- --delete would erase live galleries, so it is
+      # excluded rather than merely gitignored.
+      - name: Upload app
+        run: |
+          rsync -az --delete \
+            --exclude 'node_modules' \
+            --exclude '.env' \
+            --exclude '.git' \
+            --exclude 'storage' \
+            -e "ssh -i ~/.ssh/id_ed25519" \
+            ./ \
+            "${{ secrets.MYDEVIL_USER }}@${{ secrets.MYDEVIL_HOST }}:domains/${{ env.APP_DOMAIN }}/public_nodejs/"
+
+      - name: Install production dependencies and restart
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.MYDEVIL_USER }}@${{ secrets.MYDEVIL_HOST }}" \
+            "cd domains/${{ env.APP_DOMAIN }}/public_nodejs && npm ci --omit=dev && devil www restart ${{ env.APP_DOMAIN }}"

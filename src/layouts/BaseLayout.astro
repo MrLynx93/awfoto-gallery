@@ -1,0 +1,74 @@
+---
+/**
+ * The shell for every page.
+ *
+ * Deliberately leaner than awfoto-site's BaseLayout, which carries canonical
+ * URLs, Open Graph tags and LocalBusiness schema. None of that belongs here:
+ * every page is either a client's private gallery or an admin screen, so link
+ * previews and structured data would be actively wrong. What carries over is
+ * the brand — the same tokens, the same two self-hosted faces.
+ */
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  /** Wider pages (the gallery grid) opt out of the narrow reading column. */
+  wide?: boolean;
+}
+
+const { title, wide = false } = Astro.props;
+---
+
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title} — AW Fotografia</title>
+
+    <!-- Self-hosted, so no third-party request and no consent question. Both
+         faces are split latin / latin-ext by unicode-range: Polish diacritics
+         live in latin-ext, so this page fetches both and an ASCII one does not. -->
+    <link
+      rel="preload"
+      href="/fonts/jost-300.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+  </head>
+  <body>
+    <main class={wide ? 'wide' : ''}>
+      <slot />
+    </main>
+
+    <footer>
+      <p>AW Fotografia</p>
+    </footer>
+
+    <style>
+      main {
+        width: 100%;
+        max-width: var(--max);
+        margin: 0 auto;
+        padding: clamp(2rem, 6vw, 4rem) var(--pad-x);
+      }
+      main:not(.wide) {
+        max-width: 46rem;
+      }
+      footer {
+        padding: 2rem var(--pad-x);
+        text-align: center;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--tekst-jasny);
+        border-top: 1px solid var(--piaskowy);
+      }
+      footer p {
+        margin: 0;
+      }
+    </style>
+  </body>
+</html>

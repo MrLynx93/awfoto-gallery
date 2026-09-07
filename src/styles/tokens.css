@@ -1,0 +1,36 @@
+/*
+ * Design tokens — warm boho, cream and white.
+ *
+ * Colour tokens deliberately keep their Polish names (kremowy, bez, glina…);
+ * every other identifier in this codebase is English.
+ *
+ * The site commits to one light theme: a cream photography portfolio has no
+ * dark mode, so every colour is painted explicitly rather than inherited.
+ */
+
+:root {
+  /* colours */
+  --kremowy: #fdfbf7;
+  --bez: #f5efe6;
+  --piaskowy: #e8ddd0;
+  --taupe: #c9b8a5;
+  --glina: #b08968;
+  --glina-ciemna: #8e6b4f;
+  --szalwia: #9ca38f;
+  --tekst: #4a4038;
+  --tekst-jasny: #7a6e63;
+  --biel: #ffffff;
+
+  /* type */
+  --display: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --body: 'Jost', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+
+  /* layout */
+  --max: 1240px;
+  --gap: clamp(3.5rem, 9vw, 8rem);
+  --gap-sm: clamp(2rem, 4vw, 3.5rem);
+  --pad-x: clamp(1.25rem, 5vw, 4rem);
+
+  /* the recurring boho motif: an arch-topped photo frame */
+  --arch: 50% 50% 6px 6px / 22% 22% 3px 3px;
+}

@@ -172,11 +172,15 @@ What is true: never *buffer* a file into memory, and never load one into a
 `Buffer` before sending.
 
 What is false: that streaming itself is expensive. Node's file streaming is
-asynchronous I/O with backpressure — roughly a 64 KB buffer per connection, and
-one process serves many concurrent downloads without blocking its event loop. A
-download does not occupy a process the way a CPU-bound task does. Against the
-40-process cap, ten simultaneous client downloads are ten sockets in one
-process, not ten processes.
+asynchronous I/O with backpressure, and one process serves many concurrent
+downloads without blocking its event loop. A download does not occupy a process
+the way a CPU-bound task does — against the 40-process cap, ten simultaneous
+downloads are ten sockets in one process, not ten processes.
+
+**Measured, not assumed:** ten concurrent 200 MB downloads through
+`res.sendFile()` moved RSS from 120.3 MB to 122.7 MB — about 240 KB per stream,
+and flat for the duration. Re-run it with the `/__streamtest` route in `app.js`
+if this is ever doubted.
 
 So use `res.sendFile()`, which also gives **`Range` support for free** — and
 that genuinely matters: a client on a phone whose 6 GB wedding download drops at
