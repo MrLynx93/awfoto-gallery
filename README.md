@@ -58,8 +58,28 @@ devil mysql list -v             # read back the REAL names — mydevil prefixes 
 ```
 
 Then copy `MYDEVIL_HOST`, `MYDEVIL_USER` and `MYDEVIL_SSH_KEY` into this repo's
-Actions secrets, and put `.env` (from `.env.example`) at
-`~/domains/galeria.aw-foto.pl/public_nodejs/.env`, mode 600.
+Actions secrets so the deploy can run.
+
+### The server's `.env`
+
+The deploy deliberately never touches `.env` — it is excluded from the rsync so
+it survives every deploy — which means it has to be created once, on the server,
+after the first deploy has put the code there:
+
+```sh
+ssh MrLynx93@s88.mydevil.net
+cd ~/domains/galeria.aw-foto.pl/public_nodejs
+sh scripts/setup-env.sh
+devil www restart galeria.aw-foto.pl
+```
+
+It reads the database name and user out of `devil mysql list` rather than asking
+you to recall them, which is the point: mydevil prefixes both with the account
+login, so a file written from the name you *asked* for silently fails against
+the one it *created*. Passwords are read without echo, so they never reach shell
+history, and the file is written mode 600.
+
+`.env.example` documents every value if you would rather write it by hand.
 
 ### The two checks the Milestone 0 script does not do
 
