@@ -21,6 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handler as astroHandler } from './dist/server/entry.mjs';
 import { filesRouter } from './server/routes/files.js';
+import { uploadRouter } from './server/routes/upload.js';
 import { migrate } from './server/db.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +78,11 @@ if (process.env.STREAM_TEST_FILE) {
 // Astro handler, because these paths are not files in any docroot -- they are
 // authorised reads from outside the web root.
 app.use(filesRouter);
+
+// The tus endpoint. Mounted before the Astro handler and before any body
+// parser: tus needs the raw request stream, and a parser that consumed it
+// would break every upload in a way that looks like a network fault.
+app.use(uploadRouter);
 
 // Hashed build assets never change under the same name, so they cache hard.
 app.use(

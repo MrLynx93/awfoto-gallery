@@ -46,9 +46,13 @@ Measured on `s88.mydevil.net`, FreeBSD 14.3-RELEASE-p18, by
   1.1 TB available. Any free-space check built on `df` will read "terabytes free"
   and then fail with `ENOSPC`. See "Storage and the disk budget".
 - **The locale is `C`**, and `LANG` is unset. UTF-8 filenames round-trip fine at
-  the byte level, but set `LANG=pl_PL.UTF-8` in the app environment and pass
-  `-UN=UTF8` to `zip`, or Polish filenames inside an archive open as mojibake on
-  the client's Windows machine.
+  the byte level. Set `LANG=pl_PL.UTF-8` in the app environment anyway — but note
+  that **it does not fix ZIP entry names**, and neither does `-UN=UTF8` (not a
+  valid value for that option; it takes Quit|Warn|Ignore|No|Escape). Info-ZIP
+  stores names as raw UTF-8 with bit 11 clear under every locale tried, so
+  Windows shows mojibake. `verifyArchive` reports affected entries instead of
+  pretending this is solved. See "Storage and the disk budget" and
+  `server/archive.js`.
 - **There is no `static` site type.** `devil www` offers php, python, ruby,
   nodejs, proxy, pointer — and `aw-foto.pl` is in fact a **php** site serving the
   static build. awfoto-site's README is wrong about this.

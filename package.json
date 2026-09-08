@@ -12,6 +12,13 @@
   "dependencies": {
     "@astrojs/node": "11.1.4",
     "@astrojs/react": "6.0.4",
+    "@tus/file-store": "^2.1.1",
+    "@tus/server": "^2.4.5",
+    "@uppy/core": "^6.0.1",
+    "@uppy/dashboard": "^6.0.0",
+    "@uppy/locales": "^5.2.0",
+    "@uppy/react": "^6.0.0",
+    "@uppy/tus": "^6.0.0",
     "astro": "7.2.4",
     "express": "5.1.0",
     "mysql2": "3.15.3",
