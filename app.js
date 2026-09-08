@@ -27,10 +27,41 @@ import { migrate } from './server/db.js';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.join(root, 'dist', 'client');
 
-// Migrations run at startup: the deploy is an rsync and a restart, with no
-// natural place to hang a migrate step, and a schema lagging the code deployed
-// with it is the worse failure. Passenger surfaces a startup crash clearly.
-await migrate();
+/**
+ * Migrations run at startup: the deploy is an rsync and a restart, with no
+ * natural place to hang a migrate step, and a schema lagging the code deployed
+ * with it is the worse failure.
+ *
+ * But a failure here must not stop the process from starting. Under Passenger a
+ * boot crash produces its own error page, which tells the visitor nothing and
+ * the operator very little -- and the one person who can fix it is looking at
+ * the site, not at a log. So the cause is written to the log in full, and the
+ * app still starts and says something honest in Polish.
+ */
+let startupError = null;
+
+try {
+  await migrate();
+} catch (error) {
+  startupError = error;
+  console.error('\n[start] The application could not reach its database.\n');
+  console.error(`[start] ${error.message}\n`);
+
+  const missing = ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'SESSION_SECRET', 'ADMIN_PASSWORD_HASH']
+    .filter((name) => !process.env[name]);
+
+  if (missing.length > 0) {
+    console.error(`[start] Missing from .env: ${missing.join(', ')}`);
+    console.error('[start] Expected at ~/domains/<domain>/public_nodejs/.env (chmod 600).');
+    console.error('[start] Copy .env.example and fill it in; see README.md.\n');
+  } else {
+    console.error('[start] All required variables are set, so this is the database');
+    console.error('[start] itself: check the name, user and password against');
+    console.error('[start] `devil mysql list -v` -- mydevil prefixes both names');
+    console.error('[start] with the account login, and the .env must use what it');
+    console.error('[start] actually created rather than what you asked for.\n');
+  }
+}
 
 const app = express();
 app.disable('x-powered-by');
@@ -41,6 +72,42 @@ app.use((req, res, next) => {
   res.set('X-Robots-Tag', 'noindex, nofollow');
   next();
 });
+
+/**
+ * With no database there is no gallery, no login and no upload, so rather than
+ * let every route fail in its own way this answers everything with one honest
+ * page. A client who followed a link is told it is temporary and not their
+ * fault; the detail stays in the log where the operator will look.
+ */
+if (startupError) {
+  app.use((req, res) => {
+    res.status(503).type('html').send(`<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Chwilowa przerwa — AW Fotografia</title>
+    <style>
+      body { margin:0; min-height:100vh; display:grid; place-items:center;
+             background:#fdfbf7; color:#4a4038; font-family:'Jost',system-ui,sans-serif;
+             font-weight:300; line-height:1.75; padding:2rem; }
+      main { max-width:30rem; text-align:center; }
+      h1 { font-family:Georgia,serif; font-weight:400; margin:0 0 0.6em; }
+      a { color:#8e6b4f; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Chwilowa przerwa techniczna</h1>
+      <p>Galeria jest teraz niedostępna. To nie jest problem z Twoim linkiem —
+         zadziała ponownie, gdy usterka zostanie usunięta.</p>
+      <p><a href="https://aw-foto.pl/kontakt">aw-foto.pl/kontakt</a></p>
+    </main>
+  </body>
+</html>`);
+  });
+}
 
 /**
  * Milestone 1 streaming check — the open risk that outranks the others.
