@@ -23,6 +23,7 @@ import { handler as astroHandler } from './dist/server/entry.mjs';
 import { filesRouter } from './server/routes/files.js';
 import { uploadRouter } from './server/routes/upload.js';
 import { migrate } from './server/db.js';
+import { baseUrl } from './server/config.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.join(root, 'dist', 'client');
@@ -63,6 +64,49 @@ const migrating = migrate().catch((error) => {
 
 const app = express();
 app.disable('x-powered-by');
+
+// nginx and Passenger sit in front, so the client's address and the original
+// protocol arrive in X-Forwarded-*. Without this, every request looks like it
+// came from localhost over HTTP -- which matters for the rate limiter, which
+// counts attempts per address.
+app.set('trust proxy', true);
+
+/**
+ * Cross-site request forgery check.
+ *
+ * Replaces Astro's built-in `checkOrigin`, which cannot work behind this proxy:
+ * it compares Origin against the origin it infers from the request, and behind
+ * nginx it infers http://<internal-host> rather than the https:// address the
+ * browser used. The result was that every login and every upload form was
+ * rejected with "Cross-site POST form submissions are forbidden".
+ *
+ * This compares against PUBLIC_BASE_URL instead -- the origin the browser
+ * genuinely sees -- and applies to the tus endpoint as well, which sits in
+ * Express and was never covered by Astro's check at all.
+ */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const expectedOrigin = (() => {
+  try {
+    return new URL(baseUrl).origin;
+  } catch {
+    return null;
+  }
+})();
+
+app.use((req, res, next) => {
+  if (SAFE_METHODS.has(req.method)) return next();
+
+  const origin = req.get('origin');
+
+  // No Origin header at all: not a browser form post. curl and other tools send
+  // none, and a cross-site form always does, so this is not the attack shape.
+  if (!origin) return next();
+
+  if (!expectedOrigin || origin === expectedOrigin) return next();
+
+  console.warn(`[csrf] refused ${req.method} ${req.path} from origin ${origin}`);
+  res.status(403).type('text').send('Nieprawidłowe źródło żądania. Odśwież stronę i spróbuj ponownie.');
+});
 
 // Nothing here should ever appear in a search result: not the admin screen, and
 // certainly not a client's gallery.

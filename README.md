@@ -81,6 +81,17 @@ history, and the file is written mode 600.
 
 `.env.example` documents every value if you would rather write it by hand.
 
+### Forgotten the panel password?
+
+It is stored as a scrypt hash, so it cannot be read back out of `.env` — only
+replaced:
+
+```sh
+cd ~/domains/galeria.aw-foto.pl/public_nodejs
+sh scripts/set-admin-password.sh
+devil www restart galeria.aw-foto.pl
+```
+
 ### The two checks the Milestone 0 script does not do
 
 Both create state on the host, which is why the probe skips them.

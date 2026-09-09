@@ -17,5 +17,21 @@ export default defineConfig({
   // The client never sees a URL it did not get from us, and trailing-slash
   // drift breaks the session cookie's path matching.
   trailingSlash: 'never',
+
+  /**
+   * Astro's own origin check is off, and replaced by one in app.js.
+   *
+   * Not a relaxation -- a correction. Astro compares the browser's Origin
+   * against the origin it infers from the request, and behind nginx and
+   * Passenger it infers plain HTTP on an internal hostname. That never matches
+   * https://galeria.aw-foto.pl, so every form POST was refused with
+   * "Cross-site POST form submissions are forbidden". It passed locally only
+   * because there was no proxy in front.
+   *
+   * app.js does the same check against PUBLIC_BASE_URL, which is the origin the
+   * browser actually sees, and covers the tus endpoint too -- which Astro never
+   * saw, since it is mounted in Express.
+   */
+  security: { checkOrigin: false },
   server: { port: 4322 },
 });
