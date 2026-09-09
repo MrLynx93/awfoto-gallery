@@ -22,7 +22,7 @@ import express from 'express';
 import { Server } from '@tus/server';
 import { FileStore } from '@tus/file-store';
 
-import { STORAGE_ROOT } from '../config.js';
+import { STORAGE_ROOT, baseUrl } from '../config.js';
 import { originalsDir, galleryDir } from '../storage.js';
 import { findBySlug } from '../galleries.js';
 import { ADMIN_COOKIE, isAdmin } from '../sessions.js';
@@ -82,20 +82,34 @@ const tus = new Server({
   datastore: new FileStore({ directory: incomingDir }),
 
   /**
-   * Both of these exist because nginx terminates TLS in front of this app.
+   * The `Location` the client is told to PATCH to, built from PUBLIC_BASE_URL.
    *
-   * tus answers a creation request with a `Location` for the client to PATCH
-   * to. By default that is built from what this process sees, which is plain
-   * HTTP on an internal hostname -- so the browser, on an https:// page, is
-   * handed an http:// URL and refuses it as mixed content. Every upload fails
-   * before a byte moves.
+   * This is the third attempt at this one line, so the reasoning is worth
+   * keeping. tus answers a creation request with a Location. Left to itself it
+   * builds one from what this process sees -- plain HTTP on an internal
+   * hostname -- and the browser, on an https:// page, refuses it as mixed
+   * content before a byte moves.
    *
-   * `relativeLocation` sidesteps it entirely: the browser resolves the path
-   * against the page's own origin, so no proxy header has to be correct for
-   * uploads to work. `respectForwardedHeaders` covers anywhere an absolute URL
-   * is still constructed.
+   * `relativeLocation: true` was the obvious fix and was not enough: the
+   * observed failure was still an absolute `http://galeria.aw-foto.pl/...`,
+   * which a relative Location cannot produce on its own. Something between here
+   * and the browser -- nginx rewriting a relative Location against the internal
+   * http upstream -- was absolutising it with the wrong scheme.
+   *
+   * So the URL is stated outright, from the one origin we know the browser
+   * used. There is nothing relative left to rewrite and no proxy header that
+   * has to be correct. `generateUrl` is consulted before both other options, so
+   * this is the only rule in play.
+   *
+   * If uploads ever break again with a wrong scheme or host, check
+   * PUBLIC_BASE_URL in .env first -- it is now the single source of this URL.
    */
-  relativeLocation: true,
+  generateUrl(req, { path, id }) {
+    return `${baseUrl.replace(/\/+$/, '')}${path}/${id}`;
+  },
+
+  // Still declared: it feeds the proto/host handed to generateUrl above, and
+  // costs nothing even though generateUrl ignores them.
   respectForwardedHeaders: true,
 
   /**

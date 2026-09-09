@@ -42,7 +42,14 @@ export default function UploadPanel({ slug, password, shareUrl }: Props) {
         // any transfer, rather than confusing the worker later.
         restrictions: { allowedFileTypes: ['image/jpeg', 'image/png', '.jpg', '.jpeg', '.png'] },
       }).use(Tus, {
-        endpoint: '/admin/upload',
+        // Absolute, from the page's own origin. tus-js-client resolves the
+        // server's Location against this endpoint, and giving it a relative
+        // base leaves that resolution dependent on document state we do not
+        // control. The page is served over https, so this is too.
+        endpoint:
+          typeof window === 'undefined'
+            ? '/admin/upload'
+            : `${window.location.origin}/admin/upload`,
         // 6 MB: comfortably under any proxy body limit, and small enough that a
         // dropped connection costs seconds rather than minutes of re-transfer.
         chunkSize: 6 * 1024 * 1024,
