@@ -16,6 +16,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdir, rename, rm } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
 
 import express from 'express';
 import { Server } from '@tus/server';
@@ -30,6 +31,11 @@ export const uploadRouter = express.Router();
 
 /** Partial uploads live apart from finished originals, and are swept with them. */
 const incomingDir = path.join(STORAGE_ROOT, 'incoming');
+
+// Created synchronously, before FileStore is constructed below. The store binds
+// to this directory at construction, so creating it later -- in a request hook,
+// as an earlier version did -- is already too late on a fresh install.
+mkdirSync(incomingDir, { recursive: true });
 
 const workerPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -75,11 +81,30 @@ const tus = new Server({
   path: '/admin/upload',
   datastore: new FileStore({ directory: incomingDir }),
 
-  // Uppy sends the gallery slug and the original filename as metadata. The slug
-  // is checked against the database here rather than trusted, so a stale tab
-  // cannot write into a gallery that has since been deleted.
-  async onIncomingRequest(req) {
-    await mkdir(incomingDir, { recursive: true });
+  /**
+   * Both of these exist because nginx terminates TLS in front of this app.
+   *
+   * tus answers a creation request with a `Location` for the client to PATCH
+   * to. By default that is built from what this process sees, which is plain
+   * HTTP on an internal hostname -- so the browser, on an https:// page, is
+   * handed an http:// URL and refuses it as mixed content. Every upload fails
+   * before a byte moves.
+   *
+   * `relativeLocation` sidesteps it entirely: the browser resolves the path
+   * against the page's own origin, so no proxy header has to be correct for
+   * uploads to work. `respectForwardedHeaders` covers anywhere an absolute URL
+   * is still constructed.
+   */
+  relativeLocation: true,
+  respectForwardedHeaders: true,
+
+  /**
+   * Surfaces the cause in the log. A failed upload otherwise shows as a bare
+   * red row in the Uppy dashboard, and the operator has nothing to go on.
+   */
+  onResponseError(req, error) {
+    console.error(`[upload] ${req.method} ${req.url} — ${error?.body || error?.message || error}`);
+    return undefined;
   },
 
   /**
