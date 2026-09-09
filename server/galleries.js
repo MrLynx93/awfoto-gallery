@@ -34,7 +34,8 @@ export async function findBySlug(slug) {
   const [rows] = await db().query(
     `SELECT id, slug, client_name AS clientName, shoot_date AS shootDate,
             password_hash AS passwordHash, status, photo_count AS photoCount,
-            bytes_total AS bytesTotal, expires_at AS expiresAt, created_at AS createdAt
+            bytes_total AS bytesTotal, last_upload_at AS lastUploadAt,
+            expires_at AS expiresAt, created_at AS createdAt
        FROM galleries
       WHERE slug = :slug AND deleted_at IS NULL`,
     { slug },
@@ -63,6 +64,33 @@ export async function create({ clientName, shootDate, password, expiryDays = 30 
     }
   }
   throw new Error('Could not allocate a unique slug after 5 attempts');
+}
+
+/** Called as each upload lands, so the worker can tell when they have stopped. */
+export async function touchUpload(slug) {
+  await db().query(
+    'UPDATE galleries SET last_upload_at = NOW() WHERE slug = :slug',
+    { slug },
+  );
+}
+
+/**
+ * Every gallery the worker should look at.
+ *
+ * Deliberately not "status = preparing". A gallery that has already been marked
+ * ready can still gain photos -- she uploads a second batch, or a file arrives
+ * after the worker finished -- and the old query skipped exactly those, which
+ * is how a multi-photo upload ended up showing one photo. processGallery works
+ * out for itself whether there is anything to do.
+ */
+export async function needingWork() {
+  const [rows] = await db().query(
+    `SELECT slug, status, photo_count AS photoCount, last_upload_at AS lastUploadAt
+       FROM galleries
+      WHERE deleted_at IS NULL AND status <> 'failed'
+      ORDER BY created_at ASC`,
+  );
+  return rows;
 }
 
 export async function markReady(slug, { photoCount, bytesTotal, status = 'ready' }) {

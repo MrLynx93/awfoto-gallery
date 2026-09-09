@@ -15,7 +15,7 @@ import { open } from 'node:fs/promises';
 import path from 'node:path';
 
 import { db, migrate, close } from './db.js';
-import { findBySlug, markReady } from './galleries.js';
+import { findBySlug, markReady, needingWork } from './galleries.js';
 import { makeDerivatives } from './images.js';
 import { buildArchive, verifyArchive } from './archive.js';
 import { canFit } from './disk.js';
@@ -63,35 +63,56 @@ async function acquireLock({ staleAfterMs = 60 * 60_000 } = {}) {
 
 const releaseLock = () => rm(LOCK_PATH, { force: true });
 
-/** Galleries whose files have landed but which are not yet ready. */
-async function pending() {
-  const [rows] = await db().query(
-    `SELECT slug FROM galleries
-      WHERE deleted_at IS NULL AND status = 'preparing'
-      ORDER BY created_at ASC`,
-  );
-  return rows.map((row) => row.slug);
-}
+/**
+ * How long after the last file lands a gallery is considered finished.
+ *
+ * Uploads arrive one at a time, so "no files for a while" is the only signal
+ * available that she has stopped. Long enough to bridge a slow file on a
+ * domestic connection; short enough that she is not left watching
+ * "przygotowuję" after the last photo.
+ */
+const QUIET_PERIOD_MS = 45_000;
 
+/** How long a single run will keep waiting for an upload batch to settle. */
+const MAX_WAIT_MS = 20 * 60_000;
+const POLL_MS = 10_000;
+
+/**
+ * Brings one gallery up to date.
+ *
+ * Returns 'done' when the gallery is finished, 'waiting' when photos are still
+ * arriving and it should be revisited, or 'idle' when there was nothing to do.
+ *
+ * Derivatives are made incrementally -- only for originals that do not have
+ * them yet -- so this is safe to run repeatedly while an upload is in progress,
+ * and previews appear as photos land rather than all at the end.
+ */
 async function processGallery(slug, { log = console.log } = {}) {
   const gallery = await findBySlug(slug);
-  if (!gallery) return;
+  if (!gallery) return 'idle';
 
   const originals = originalsDir(slug);
   let files;
   try {
     files = (await readdir(originals)).filter((f) => /\.(jpe?g|png)$/i.test(f)).sort();
   } catch {
-    log(`[worker] ${slug}: no originals directory yet, skipping`);
-    return;
+    // Created by the first completed upload; nothing has landed yet.
+    return 'idle';
   }
-  if (files.length === 0) {
-    log(`[worker] ${slug}: no photos yet, skipping`);
-    return;
+  if (files.length === 0) return 'idle';
+
+  // Still arriving? Generate derivatives for what is here, but do not finalise:
+  // building the archive now would only mean rebuilding it for the next photo,
+  // and marking the gallery ready would hide the ones still to come.
+  const lastUpload = gallery.lastUploadAt ? new Date(gallery.lastUploadAt).getTime() : 0;
+  const quiet = Date.now() - lastUpload > QUIET_PERIOD_MS;
+
+  // Nothing new since the last run, and already finished.
+  if (quiet && gallery.status !== 'preparing' && gallery.photoCount === files.length) {
+    return 'idle';
   }
 
   await mkdir(previewsDir(slug), { recursive: true });
-  log(`[worker] ${slug}: ${files.length} photos`);
 
   const photos = [];
   let derivativeBytes = 0;
@@ -100,9 +121,32 @@ async function processGallery(slug, { log = console.log } = {}) {
   // Strictly one at a time. Not only for memory: the account allows 40
   // processes in total, shared with Passenger and cron, so fanning out would
   // starve the web server that still has to answer clients.
+  let made = 0;
   for (const [index, filename] of files.entries()) {
     const src = path.join(originals, filename);
     try {
+      // Already has both derivatives from an earlier run: count it, skip the work.
+      const thumb = previewPath(slug, index, 'thumb');
+      const large = previewPath(slug, index, 'large');
+      const existing = await Promise.all([
+        stat(thumb).catch(() => null),
+        stat(large).catch(() => null),
+      ]);
+
+      if (existing[0] && existing[1]) {
+        originalBytes += (await stat(src)).size;
+        derivativeBytes += existing[0].size + existing[1].size;
+        photos.push({
+          index,
+          filename,
+          width: null,
+          height: null,
+          bytes: (await stat(src)).size,
+        });
+        continue;
+      }
+
+      made += 1;
       const result = await makeDerivatives(src, (size) => previewPath(slug, index, size));
       originalBytes += (await stat(src)).size;
       derivativeBytes += result.bytes;
@@ -119,11 +163,16 @@ async function processGallery(slug, { log = console.log } = {}) {
     }
   }
 
+  if (made > 0) log(`[worker] ${slug}: prepared ${made} of ${files.length} photos`);
+
   if (photos.length === 0) {
     await markReady(slug, { photoCount: 0, bytesTotal: 0, status: 'failed' });
     log(`[worker] ${slug}: no photo could be processed — marked failed`);
-    return;
+    return 'done';
   }
+
+  // Photos are still landing. Leave the gallery preparing and come back.
+  if (!quiet) return 'waiting';
 
   // Re-index so the manifest is dense: a skipped file must not leave a gap the
   // grid would render as a broken image.
@@ -172,6 +221,7 @@ async function processGallery(slug, { log = console.log } = {}) {
   });
 
   log(`[worker] ${slug}: ${status}, ${photos.length} photos`);
+  return 'done';
 }
 
 export async function runOnce({ log = console.log } = {}) {
@@ -182,9 +232,35 @@ export async function runOnce({ log = console.log } = {}) {
 
   try {
     await migrate({ log: () => {} });
-    const slugs = await pending();
-    for (const slug of slugs) await processGallery(slug, { log });
-    return slugs.length;
+
+    // Keeps working until every gallery has settled. A batch of 800 photos
+    // arrives over many minutes, and each completed upload spawns a worker that
+    // finds this one holding the lock and exits -- so this run has to be the one
+    // that waits, rather than relying on a spawn that will not happen again
+    // after the last file.
+    const deadline = Date.now() + MAX_WAIT_MS;
+    let finished = 0;
+
+    for (;;) {
+      let waiting = 0;
+
+      for (const gallery of await needingWork()) {
+        const outcome = await processGallery(gallery.slug, { log });
+        if (outcome === 'waiting') waiting += 1;
+        if (outcome === 'done') finished += 1;
+      }
+
+      if (waiting === 0) break;
+
+      if (Date.now() > deadline) {
+        log('[worker] gave up waiting for uploads to settle; cron will finish');
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    }
+
+    return finished;
   } finally {
     await releaseLock();
   }

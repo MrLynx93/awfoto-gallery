@@ -24,7 +24,7 @@ import { FileStore } from '@tus/file-store';
 
 import { STORAGE_ROOT, baseUrl } from '../config.js';
 import { originalsDir, galleryDir } from '../storage.js';
-import { findBySlug } from '../galleries.js';
+import { findBySlug, touchUpload } from '../galleries.js';
 import { ADMIN_COOKIE, isAdmin } from '../sessions.js';
 
 export const uploadRouter = express.Router();
@@ -149,6 +149,10 @@ const tus = new Server({
     await mkdir(originalsDir(slug), { recursive: true });
     await rename(path.join(incomingDir, upload.id), destination);
     await rm(path.join(incomingDir, `${upload.id}.json`), { force: true });
+
+    // Recorded before the worker is woken: it uses this to decide whether the
+    // batch has finished or another file is still on its way.
+    await touchUpload(slug);
 
     wakeWorker();
     return {};
