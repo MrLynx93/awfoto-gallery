@@ -20,7 +20,12 @@ import '@uppy/dashboard/css/style.min.css';
 
 interface Props {
   slug: string;
-  password: string;
+  /**
+   * null when the signed cookie carrying it has expired or the page was opened
+   * in another browser. Only the scrypt hash is stored, so there is nothing to
+   * recover -- the panel offers a new password instead.
+   */
+  password: string | null;
   shareUrl: string;
 }
 
@@ -125,18 +130,33 @@ export default function UploadPanel({ slug, password, shareUrl }: Props) {
         <p className="finish-label">Link dla klienta</p>
         <p className="finish-link">{shareUrl}</p>
 
-        <p className="finish-label">Hasło</p>
-        <p className="finish-password">{password}</p>
+        {password ? (
+          <>
+            <p className="finish-label">Hasło</p>
+            <p className="finish-password">{password}</p>
+          </>
+        ) : (
+          <form className="repass" method="POST">
+            <p>
+              Hasło pokazuje się tylko raz, zaraz po założeniu galerii, i nie da
+              się go już odczytać. Jeśli go nie masz, ustaw nowe — stare
+              przestanie wtedy działać.
+            </p>
+            <button type="submit">Ustaw nowe hasło</button>
+          </form>
+        )}
 
         <div className="finish-actions">
-          <button
-            type="button"
-            onClick={() => copy(`${shareUrl}\nHasło: ${password}`, 'both')}
-          >
-            {copied === 'both' ? 'Skopiowane ✓' : 'Kopiuj link i hasło'}
-          </button>
+          {password && (
+            <button
+              type="button"
+              onClick={() => copy(`${shareUrl}\nHasło: ${password}`, 'both')}
+            >
+              {copied === 'both' ? 'Skopiowane ✓' : 'Kopiuj link i hasło'}
+            </button>
+          )}
           <button type="button" className="ghost" onClick={() => copy(shareUrl, 'link')}>
-            {copied === 'link' ? 'Skopiowane ✓' : 'Tylko link'}
+            {copied === 'link' ? 'Skopiowane ✓' : password ? 'Tylko link' : 'Kopiuj link'}
           </button>
         </div>
 

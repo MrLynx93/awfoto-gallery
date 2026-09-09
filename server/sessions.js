@@ -78,15 +78,52 @@ export function isAdmin(token) {
   return Boolean(data && data.kind === 'admin');
 }
 
-/** httpOnly and SameSite=Lax: a gallery link arrives from a message app. */
-export function cookieOptions(maxAgeMs) {
+/**
+ * httpOnly and SameSite=Lax: a gallery link arrives from a message app.
+ *
+ * `path` narrows a cookie to the one page that needs it. The default is the
+ * whole site, which is right for the admin and gallery sessions; the
+ * new-gallery password below is the exception, and scoping it means it is not
+ * attached to every upload chunk and every photo request.
+ */
+export function cookieOptions(maxAgeMs, path = '/') {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: maxAgeMs,
-    path: '/',
+    // Set-Cookie counts Max-Age in *seconds*; every TTL in this file is in
+    // milliseconds, so without the divide the browser is told to keep an admin
+    // cookie for eighty years. The signature's own `exp` was still enforcing
+    // the real 30 days, so this showed up as a dead cookie lingering in the
+    // jar rather than as a way in.
+    maxAge: Math.floor(maxAgeMs / 1000),
+    path,
   };
+}
+
+/**
+ * Carries a freshly created gallery's password from the POST that made it to
+ * the page that displays it.
+ *
+ * It has to survive a redirect, and it cannot come from the database -- only
+ * the scrypt hash is stored, deliberately. So it rides in a signed, httpOnly
+ * cookie scoped to that one gallery's page: readable by no script, sent to no
+ * other path, and gone within the day. The value is a password the photographer
+ * is about to send to a client in a message anyway, and this keeps it out of
+ * the URL, where it would sit in browser history.
+ */
+export const newGalleryCookieName = (slug) => `awf_new_${slug}`;
+
+/** The only path the cookie above is ever sent to. */
+export const newGalleryCookiePath = (slug) => `/admin/wyslij/${slug}`;
+
+export const issueNewGalleryPassword = (slug, password) =>
+  issue({ kind: 'new-gallery', gid: slug, password }, GALLERY_TTL_MS);
+
+export function readNewGalleryPassword(token, slug) {
+  const data = read(token);
+  if (!data || data.kind !== 'new-gallery' || data.gid !== slug) return null;
+  return data.password ?? null;
 }
 
 export const GALLERY_TTL = GALLERY_TTL_MS;

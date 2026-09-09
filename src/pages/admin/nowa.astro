@@ -1,20 +1,29 @@
 ---
 /**
- * One screen, nothing else on it.
+ * Step one of two: name the session, and nothing else.
  *
- * Two steps rather than one: the form creates the gallery, and only then does
- * the drop zone appear — with the link and password already visible above it.
- * That ordering is deliberate. The share link exists the moment she names the
- * client, so if anything goes wrong mid-upload the gallery is still there to
- * resume into, and she is never left having transferred 6 GB with nothing to
- * show for it.
+ * This page creates the gallery and then *redirects* to the upload screen. It
+ * used to render the upload panel from the POST response itself, which meant
+ * the address bar still pointed at a form submission -- so a refresh, or a
+ * back-then-forward, re-ran the insert and left an orphan gallery behind.
+ * Post/Redirect/Get is the fix: after this, refreshing lands on a plain GET.
+ *
+ * The share link exists the moment she names the client, so if anything goes
+ * wrong mid-upload the gallery is still there to resume into, and she is never
+ * left having transferred 6 GB with nothing to show for it.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import UploadPanel from '../../components/UploadPanel.tsx';
 import { create } from '../../../server/galleries.js';
 import { generatePassword } from '../../../server/passwords.js';
-import { baseUrl } from '../../../server/config.js';
-import { ADMIN_COOKIE, isAdmin } from '../../../server/sessions.js';
+import {
+  ADMIN_COOKIE,
+  isAdmin,
+  cookieOptions,
+  issueNewGalleryPassword,
+  newGalleryCookieName,
+  newGalleryCookiePath,
+  GALLERY_TTL,
+} from '../../../server/sessions.js';
 
 if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
   return Astro.redirect('/admin/login');
@@ -27,7 +36,6 @@ const EXPIRY_CHOICES = [
   { days: 90, label: '90 dni' },
 ];
 
-let created = null;
 let error = null;
 
 if (Astro.request.method === 'POST') {
@@ -37,74 +45,71 @@ if (Astro.request.method === 'POST') {
   const expiryDays = Number(form.get('expiryDays') || 30);
 
   if (!clientName) {
+    // Nothing was created, so re-rendering the form here duplicates nothing.
     error = 'Wpisz imię klienta — będzie widoczne na stronie ze zdjęciami.';
   } else {
     const password = generatePassword();
     const { slug } = await create({ clientName, shootDate, password, expiryDays });
-    created = { slug, password, shareUrl: `${baseUrl}/g/${slug}` };
+
+    // The plaintext exists only in this request -- the database holds a scrypt
+    // hash and nothing else. It rides to the next page in a signed, httpOnly
+    // cookie scoped to that page alone, rather than in the URL where it would
+    // sit in browser history and in every screenshot.
+    Astro.cookies.set(
+      newGalleryCookieName(slug),
+      issueNewGalleryPassword(slug, password),
+      cookieOptions(GALLERY_TTL, newGalleryCookiePath(slug)),
+    );
+    return Astro.redirect(newGalleryCookiePath(slug), 303);
   }
 }
 
 const today = new Date().toISOString().slice(0, 10);
 ---
 
-<BaseLayout title={created ? 'Wyślij zdjęcia' : 'Nowa galeria'} wide={Boolean(created)}>
-  {
-    created ? (
-      <>
-        <h1>Wyślij zdjęcia</h1>
-        <UploadPanel
-          client:load
-          slug={created.slug}
-          password={created.password}
-          shareUrl={created.shareUrl}
+<BaseLayout title="Nowa galeria">
+  <section class="form-screen">
+    <h1>Nowa galeria</h1>
+    <p class="lead">Najpierw krótko o sesji. Zdjęcia wybierzesz na następnym ekranie.</p>
+
+    <form method="POST">
+      <label>
+        <span>Imię klienta</span>
+        <input
+          name="clientName"
+          type="text"
+          required
+          autofocus
+          placeholder="Zuzia i Marek"
         />
-      </>
-    ) : (
-      <section class="form-screen">
-        <h1>Nowa galeria</h1>
-        <p class="lead">Najpierw krótko o sesji. Zdjęcia wybierzesz na następnym ekranie.</p>
+      </label>
 
-        <form method="POST">
-          <label>
-            <span>Imię klienta</span>
-            <input
-              name="clientName"
-              type="text"
-              required
-              autofocus
-              placeholder="Zuzia i Marek"
-            />
-          </label>
+      <label>
+        <span>Data sesji</span>
+        <input name="shootDate" type="date" value={today} />
+      </label>
 
-          <label>
-            <span>Data sesji</span>
-            <input name="shootDate" type="date" value={today} />
-          </label>
+      <label>
+        <span>Galeria zniknie po</span>
+        <select name="expiryDays">
+          {EXPIRY_CHOICES.map((choice) => (
+            <option value={choice.days} selected={choice.days === 30}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
-          <label>
-            <span>Galeria zniknie po</span>
-            <select name="expiryDays">
-              {EXPIRY_CHOICES.map((choice) => (
-                <option value={choice.days} selected={choice.days === 30}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-          </label>
+      <button type="submit">Dalej</button>
+    </form>
 
-          <button type="submit">Dalej</button>
-        </form>
+    {error && <p class="error" role="alert">{error}</p>}
 
-        {error && <p class="error" role="alert">{error}</p>}
-
-        <p class="note">
-          Zdjęcia kasują się same po upływie tego czasu, żeby na serwerze było
-          miejsce na kolejne sesje.
-        </p>
-      </section>
-    )
-  }
+    <p class="note">
+      Zdjęcia kasują się same po upływie tego czasu, żeby na serwerze było
+      miejsce na kolejne sesje.
+    </p>
+  </section>
 </BaseLayout>
 
 <style>
@@ -134,55 +139,4 @@ const today = new Date().toISOString().slice(0, 10);
   button:hover { background: var(--glina-ciemna); }
   .error { color: var(--glina-ciemna); margin-top: 1.2rem; }
   .note { margin-top: 2rem; font-size: 0.85rem; color: var(--tekst-jasny); }
-</style>
-
-<style is:global>
-  /* The finish line. She has just spent an hour on this screen; the link and
-     the password are the only things that matter at the end of it, so they get
-     the weight rather than the drop zone that is now empty. */
-  .panel { display: flex; flex-direction: column; gap: 2rem; }
-
-  .finish {
-    background: var(--bez); border: 1px solid var(--piaskowy);
-    border-radius: 4px; padding: clamp(1.5rem, 4vw, 2.2rem);
-  }
-  .finish-label {
-    font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
-    color: var(--tekst-jasny); margin: 0 0 0.3rem;
-  }
-  .finish-link {
-    font-size: 1.05rem; margin: 0 0 1.4rem; word-break: break-all;
-    color: var(--tekst);
-  }
-  .finish-password {
-    font-family: var(--body); font-size: 2rem; letter-spacing: 0.3em;
-    margin: 0 0 1.6rem; color: var(--glina-ciemna);
-  }
-  .finish-actions { display: flex; flex-wrap: wrap; gap: 0.8rem; }
-  .finish-actions button {
-    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
-    text-transform: uppercase; padding: 1em 1.8em; border: 0; border-radius: 3px;
-    background: var(--glina); color: var(--biel); cursor: pointer;
-    transition: background 0.25s;
-  }
-  .finish-actions button:hover { background: var(--glina-ciemna); }
-  .finish-actions .ghost {
-    background: transparent; color: var(--glina-ciemna);
-    border: 1px solid var(--taupe);
-  }
-  .finish-actions .ghost:hover { background: var(--piaskowy); color: var(--tekst); }
-  .finish-note { margin: 1.4rem 0 0; font-size: 0.85rem; color: var(--tekst-jasny); }
-
-  .status { color: var(--tekst-jasny); font-size: 0.9rem; margin: 0; }
-  .errors {
-    background: #f7ece6; border: 1px solid var(--taupe);
-    border-radius: 4px; padding: 1.2rem;
-  }
-  .errors p { margin: 0 0 1rem; }
-  .errors button {
-    font-family: var(--body); font-size: 0.78rem; letter-spacing: 0.12em;
-    text-transform: uppercase; padding: 0.8em 1.4em; border: 0; border-radius: 3px;
-    background: var(--glina); color: var(--biel); cursor: pointer;
-  }
-  .hint { font-size: 0.85rem; color: var(--tekst-jasny); margin: 0; }
 </style>

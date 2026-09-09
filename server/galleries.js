@@ -93,6 +93,20 @@ export async function needingWork() {
   return rows;
 }
 
+/**
+ * Replaces a gallery's password.
+ *
+ * Needed because the plaintext is shown once and never stored -- if she loses
+ * it before sending it on, the gallery is unopenable and the only remedy is a
+ * new password rather than re-uploading every photo.
+ */
+export async function setPassword(slug, password) {
+  await db().query(
+    'UPDATE galleries SET password_hash = :hash WHERE slug = :slug',
+    { slug, hash: await hash(password) },
+  );
+}
+
 export async function markReady(slug, { photoCount, bytesTotal, status = 'ready' }) {
   await db().query(
     `UPDATE galleries
