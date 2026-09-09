@@ -7,7 +7,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "serve": "node app.js",
-    "astro": "astro"
+    "astro": "astro",
+    "check:passenger": "node scripts/check-passenger-compat.mjs"
   },
   "dependencies": {
     "@astrojs/node": "11.1.4",

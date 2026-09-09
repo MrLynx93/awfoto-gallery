@@ -37,6 +37,12 @@ jobs:
         env:
           PUBLIC_BASE_URL: https://${{ env.APP_DOMAIN }}
 
+      # Passenger require()s app.js, and `node app.js` does not. A graph with
+      # top-level await passes every local check and then fails to start on the
+      # server, so this gate runs before anything is shipped.
+      - name: Check the app loads the way Passenger loads it
+        run: npm run check:passenger
+
       - name: Configure SSH key
         run: |
           mkdir -p ~/.ssh

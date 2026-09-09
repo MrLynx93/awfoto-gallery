@@ -28,21 +28,20 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.join(root, 'dist', 'client');
 
 /**
- * Migrations run at startup: the deploy is an rsync and a restart, with no
- * natural place to hang a migrate step, and a schema lagging the code deployed
- * with it is the worse failure.
+ * Migrations, started but NOT awaited here.
  *
- * But a failure here must not stop the process from starting. Under Passenger a
- * boot crash produces its own error page, which tells the visitor nothing and
- * the operator very little -- and the one person who can fix it is looking at
- * the site, not at a log. So the cause is written to the log in full, and the
- * app still starts and says something honest in Polish.
+ * Passenger loads this file with `require()`, and Node refuses to `require()`
+ * an ESM graph that contains top-level await -- ERR_REQUIRE_ASYNC_MODULE, with
+ * the app never starting at all. An earlier version awaited migrate() inside a
+ * try block at module scope, which is still top-level await however it is
+ * indented, and that took the whole site down.
+ *
+ * So the promise is created here and awaited inside a request handler instead.
+ * The first request waits for the schema; every later one finds it settled.
  */
 let startupError = null;
 
-try {
-  await migrate();
-} catch (error) {
+const migrating = migrate().catch((error) => {
   startupError = error;
   console.error('\n[start] The application could not reach its database.\n');
   console.error(`[start] ${error.message}\n`);
@@ -53,15 +52,14 @@ try {
   if (missing.length > 0) {
     console.error(`[start] Missing from .env: ${missing.join(', ')}`);
     console.error('[start] Expected at ~/domains/<domain>/public_nodejs/.env (chmod 600).');
-    console.error('[start] Copy .env.example and fill it in; see README.md.\n');
+    console.error('[start] Run: sh scripts/setup-env.sh\n');
   } else {
     console.error('[start] All required variables are set, so this is the database');
     console.error('[start] itself: check the name, user and password against');
     console.error('[start] `devil mysql list -v` -- mydevil prefixes both names');
-    console.error('[start] with the account login, and the .env must use what it');
-    console.error('[start] actually created rather than what you asked for.\n');
+    console.error('[start] with the account login.\n');
   }
-}
+});
 
 const app = express();
 app.disable('x-powered-by');
@@ -78,10 +76,15 @@ app.use((req, res, next) => {
  * let every route fail in its own way this answers everything with one honest
  * page. A client who followed a link is told it is temporary and not their
  * fault; the detail stays in the log where the operator will look.
+ *
+ * Awaiting inside a handler is fine -- it is only *top-level* await that
+ * Passenger's require() cannot load.
  */
-if (startupError) {
-  app.use((req, res) => {
-    res.status(503).type('html').send(`<!doctype html>
+app.use(async (req, res, next) => {
+  await migrating;
+  if (!startupError) return next();
+
+  res.status(503).type('html').send(`<!doctype html>
 <html lang="pl">
   <head>
     <meta charset="utf-8" />
@@ -106,40 +109,7 @@ if (startupError) {
     </main>
   </body>
 </html>`);
-  });
-}
-
-/**
- * Milestone 1 streaming check — the open risk that outranks the others.
- *
- * If Passenger buffers responses or times out long requests, multi-GB downloads
- * break in a way that looks mysterious much later. This route proves the real
- * production mechanism (`res.sendFile`, which also brings Range support) end to
- * end on the real host.
- *
- * It serves exactly one operator-named file and nothing else: enabled only when
- * STREAM_TEST_FILE is set, and the path comes from the environment rather than
- * the request, so it can never be pointed at something by a caller. Unset the
- * variable once the check passes.
- */
-if (process.env.STREAM_TEST_FILE) {
-  const testFile = path.resolve(process.env.STREAM_TEST_FILE);
-  app.get('/__streamtest', (req, res) => {
-    // `dotfiles: 'allow'` because send(1) otherwise 404s any path containing a
-    // dot-segment — which silently breaks a STORAGE_ROOT like ~/.galeria. That
-    // guard exists to stop a docroot leaking .git or .env; here the path comes
-    // from the environment and never from the request, so it protects nothing
-    // and only surprises whoever picked a hidden directory.
-    res.sendFile(testFile, { dotfiles: 'allow' }, (err) => {
-      // An aborted download is the normal case, not an error worth logging:
-      // every cancelled click and every Range probe ends this way.
-      if (err && !res.headersSent) {
-        console.error('[streamtest]', err.message);
-        res.status(500).end();
-      }
-    });
-  });
-}
+});
 
 // Photos, previews and archives. Mounted before the static handlers and the
 // Astro handler, because these paths are not files in any docroot -- they are
