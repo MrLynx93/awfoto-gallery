@@ -1,17 +1,18 @@
 ---
 /**
- * Milestone 1 placeholder: proves the deploy loop, the brand assets and the
- * Passenger entry point all work before a single feature is written.
+ * The bare domain.
  *
- * Becomes a redirect to /admin once the admin screens exist.
+ * Almost every visit here is the photographer typing the address from memory,
+ * so it goes straight to the panel — clients never arrive at the root, they
+ * click a `/g/<slug>` link they were sent.
+ *
+ * A client who does land here is not left guessing: /admin bounces an
+ * unauthenticated visitor to a login screen that says plainly it is for sending
+ * photos, which reads as "not for you" rather than as an error.
  */
-import BaseLayout from '../layouts/BaseLayout.astro';
----
+if (!Astro.cookies.has('awf_admin')) {
+  return Astro.redirect('/admin/login');
+}
 
-<BaseLayout title="Galeria">
-  <h1>Galeria AW Fotografia</h1>
-  <p>
-    Aplikacja jest w budowie. Jeśli czekasz na swoje zdjęcia, użyj linku, który
-    dostałaś lub dostałeś od fotografa.
-  </p>
-</BaseLayout>
+return Astro.redirect('/admin');
+---
