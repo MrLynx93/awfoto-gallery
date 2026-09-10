@@ -74,8 +74,14 @@ const STATUS_NOTE: Record<string, string> = {
       {dateLabel && <p class="date">{dateLabel}</p>}
     </div>
     <nav class="head-links">
-      <a href={galleryEditPath(slug)}>Edytuj</a>
-      <a href="/admin">Wszystkie galerie</a>
+      {/* Two things she can do to this gallery, and one way back. The actions
+          are buttons because they act; "wszystkie galerie" stays a link
+          because it only navigates. Deleting goes to the same confirmation
+          screen the list uses -- the originals go with it, and that decision
+          is not one to make from a hover. */}
+      <a class="act" href={galleryEditPath(slug)}>Edytuj</a>
+      <a class="act danger" href={`${galleryEditPath(slug)}/usun`}>Usuń</a>
+      <a class="back" href="/admin">Wszystkie galerie</a>
     </nav>
   </header>
 
@@ -169,12 +175,28 @@ const STATUS_NOTE: Record<string, string> = {
     margin: 0; color: var(--tekst-jasny); font-size: 0.85rem;
     letter-spacing: 0.12em; text-transform: uppercase;
   }
-  .head-links { display: flex; gap: 1.2rem; }
-  .head-links a {
-    font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--tekst-jasny); text-decoration: none;
+  .head-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+
+  .act {
+    font-family: var(--body); font-size: 0.78rem; letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 0.85em 1.5em; border-radius: 3px;
+    border: 1px solid var(--taupe); background: transparent;
+    color: var(--tekst); text-decoration: none; line-height: 1.2;
+    transition: background 0.25s, border-color 0.25s, color 0.25s;
   }
-  .head-links a:hover { color: var(--glina-ciemna); }
+  .act:hover { background: var(--piaskowy); border-color: var(--piaskowy); }
+
+  /* Outlined, not filled: on a page she opens to look at photos, the button
+     that destroys them should be recognisable without being loud. The same red
+     as the confirmation screen it leads to. */
+  .act.danger { color: #9c3b28; border-color: #e0c4bb; }
+  .act.danger:hover { background: #9c3b28; border-color: #9c3b28; color: var(--biel); }
+
+  .back {
+    font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--tekst-jasny); text-decoration: none; margin-left: 0.4rem;
+  }
+  .back:hover { color: var(--glina-ciemna); }
 
   .warn {
     background: #f7ece6; border: 1px solid var(--taupe); border-radius: 4px;
