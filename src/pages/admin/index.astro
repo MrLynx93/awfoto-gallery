@@ -9,6 +9,7 @@
  * application keeps, and it is the only honest view of how close things are.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import DeleteGalleryConfirm from '../../components/DeleteGalleryConfirm.astro';
 import { list, totalBytes } from '../../../server/galleries.js';
 import { daysUntil } from '../../../server/gallery-form.js';
 import { galleryAdminPath, galleryDeletePath } from '../../../server/paths.js';
@@ -124,14 +125,17 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                 {gallery.expired ? 'wygasła' : `za ${dayCount(daysUntil(gallery.expiresAt))}`}
               </td>
               <td class="right actions">
-                {/* One action here, not two. The name opens the gallery,
-                    and that page is the editor, so a pencil beside it would go
-                    where the row already goes. Deleting is the one thing that
-                    page cannot be, so it keeps its own door -- a link to a
-                    screen that asks, never a button that acts. */}
+                {/* One action here, not two. The name opens the gallery, and
+                    that page is the editor, so a pencil beside it would go where
+                    the row already goes. Deleting is the one thing that page
+                    cannot be, so it keeps its own door -- and it opens the same
+                    question the gallery's own page asks, in the same dialog,
+                    without leaving the list. The href is the page version, for
+                    before the script runs and for no JavaScript at all. */}
                 <a
                   class="quiet danger"
                   href={galleryDeletePath(gallery.slug)}
+                  data-usun={gallery.slug}
                   title="Usuń galerię razem ze zdjęciami"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -148,7 +152,38 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
       </div>
     )
   }
+
+  {/* One per row, all of them after the table rather than inside its cells: a
+      dialog is in the top layer wherever it is declared, and a table is a poor
+      place to nest one. Each carries its own gallery's facts, which is what
+      makes a modal safe here -- on a list of similar rows, the question has to
+      repeat which one she picked. */}
+  {
+    galleries.map((gallery) => (
+      <DeleteGalleryConfirm
+        gallery={gallery}
+        dialogId={`usun-${gallery.slug}`}
+        action={galleryDeletePath(gallery.slug)}
+        cancel={{ label: 'Nie, zostaw' }}
+      />
+    ))
+  }
 </BaseLayout>
+
+{/* The bin opens the row's dialog. It stays a real link, so before this script
+    runs -- and without JavaScript at all -- it still leads to the page that asks
+    the same thing. */}
+<script is:inline>
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-usun]');
+    if (!trigger) return;
+    const dialog = document.getElementById(`usun-${trigger.dataset.usun}`);
+    if (dialog instanceof HTMLDialogElement) {
+      event.preventDefault();
+      dialog.showModal();
+    }
+  });
+</script>
 
 <style>
   .head {

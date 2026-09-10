@@ -279,16 +279,23 @@ that is reachable with half its photos gone. It is always behind a confirmation
 that names the client and counts the photos, because the originals go with it
 and, if the card is already cleared, nothing anywhere can bring them back.
 
-That confirmation has two frames around one body (`DeleteGalleryConfirm.astro`).
-From the gallery's own page it is a `<dialog>`: she is already looking at the
-thing, and a separate screen that takes her away and then lands her on the list
-whether she says yes or no loses her place for nothing. From the dashboard's bin
-it is a page, because there she is looking at a list of nine similar rows rather
-than at the gallery, and being shown which one she picked is the point. The
-dialog needs no script beyond `showModal()` — Escape and the backdrop close it,
-and "no" is a `formmethod="dialog"` submit — and the button that opens it is a
-real link to the page version, so the question still gets asked with JavaScript
-off.
+That confirmation is one body (`DeleteGalleryConfirm.astro`) in either of two
+frames. Both screens that already show the gallery — its own page and the
+dashboard — ask in a `<dialog>`, because she is looking at the thing and a
+separate screen that takes her away and then lands her on the list whether she
+says yes or no loses her place for nothing. What makes a modal safe on a list of
+nine similar rows is that it names the client and counts the photos, so it
+repeats which one she picked rather than asking "are you sure?" about nothing in
+particular; the dashboard renders one per row, after the table, since a dialog
+is in the top layer wherever it is declared and a table cell is a poor place to
+nest one.
+
+The standalone page is the other frame, and it is the path taken with no
+JavaScript: every button that opens a dialog is a real link to it, so the
+question is still asked. Reached that way from a gallery it carries
+`?wroc=galeria` and its "no" goes back there rather than to the list. The dialog
+itself needs no script beyond `showModal()` — Escape and the backdrop close it,
+and "no" is a `formmethod="dialog"` submit.
 
 ## Upload UI requirements
 

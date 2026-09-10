@@ -190,7 +190,29 @@ export async function markReady(slug, { photoCount, bytesTotal, status = 'ready'
   );
 }
 
-/** Newest first — the dashboard is almost always about the last shoot. */
+/**
+ * One row as the dashboard uses it. Written out because the templates that
+ * consume it are typechecked and mysql2 hands back `any` -- without this every
+ * `gallery.clientName` in an .astro file is an implicit-any error.
+ *
+ * @typedef {object} GalleryRow
+ * @property {string} slug
+ * @property {string} clientName
+ * @property {string|null} shootDate
+ * @property {string} status
+ * @property {number} photoCount
+ * @property {number} bytesTotal
+ * @property {string} expiresAt
+ * @property {string} createdAt
+ * @property {boolean} expired
+ * @property {string|null} password
+ */
+
+/**
+ * Newest first — the dashboard is almost always about the last shoot.
+ *
+ * @returns {Promise<GalleryRow[]>}
+ */
 export async function list() {
   const [rows] = await db().query(
     `SELECT slug, client_name AS clientName, shoot_date AS shootDate, status,

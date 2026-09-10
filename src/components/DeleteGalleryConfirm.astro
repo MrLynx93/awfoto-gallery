@@ -3,15 +3,21 @@
  * The "are you sure?" itself: what will be destroyed, said plainly, with the
  * two buttons under it.
  *
- * Shared by the two places that ask. On the gallery's own page it is the body
- * of a dialog, because she is already looking at the gallery and taking her to
- * another screen to ask about it — and then dropping her on the list whether she
- * says yes or no — loses her place for no reason. From the dashboard it is a
- * page, because there she is not looking at the gallery at all, and a modal on a
- * list of nine similar rows is exactly where the wrong one gets deleted.
+ * Shared by every place that asks, in one of two frames. Given `dialogId` it is
+ * a modal, which is what both screens that already list the gallery use: the
+ * question is about something she is looking at, and sending her to another
+ * page to answer it -- then landing her on the list whether she says yes or no
+ * -- loses her place for nothing. Without it, it is the body of the standalone
+ * page, which is where the no-JavaScript path ends up and what the modal's
+ * trigger links to before any script runs.
  *
- * Either way it is a form and a POST: no JavaScript required, and nothing
- * deletes a wedding by being prefetched or crawled.
+ * Naming the client inside the modal is what makes it safe on the dashboard: a
+ * list of nine similar rows is exactly where the wrong gallery gets deleted, so
+ * the dialog repeats which one she picked rather than asking "are you sure?"
+ * about nothing in particular.
+ *
+ * Either way it is a form and a POST: no JavaScript required to answer it, and
+ * nothing deletes a wedding by being prefetched or crawled.
  */
 import { daysUntil } from '../../server/gallery-form.js';
 import { dayCount, megabytes } from '../../server/format.js';
@@ -25,14 +31,22 @@ interface Props {
     expiresAt: string;
   };
   /**
-   * Where "no" goes. Omitted inside a dialog, where "no" simply closes it --
-   * `formmethod="dialog"` does that natively, so even that button needs no
-   * script of its own.
+   * What "no" says, and where it goes. With `href` it is a link to another
+   * screen; without one it closes the dialog it is in -- `formmethod="dialog"`
+   * does that natively, so even that button needs no script.
    */
-  cancel?: { href: string; label: string };
+  cancel: { label: string; href?: string };
+  /** Where the form posts. Omitted to post to the page it is rendered on. */
+  action?: string;
+  /** Given, this renders as a modal with that id; omitted, as a bare body. */
+  dialogId?: string;
 }
 
-const { gallery, cancel } = Astro.props;
+const { gallery, cancel, action, dialogId } = Astro.props;
+
+// A <dialog> when it is a modal, a plain wrapper when the page is the frame.
+// Astro renders a capitalised variable holding a tag name as that element.
+const Frame = dialogId ? 'dialog' : 'div';
 
 // expires_at is NOT NULL, so the fallback is unreachable; it is here because
 // daysUntil answers null for a gallery with no date and this file should not
@@ -40,47 +54,66 @@ const { gallery, cancel } = Astro.props;
 const left = daysUntil(gallery.expiresAt) ?? 0;
 ---
 
-<dl class="what">
-  <div>
-    <dt>Klient</dt>
-    <dd>{gallery.clientName}</dd>
-  </div>
-  <div>
-    <dt>Data sesji</dt>
-    <dd>{gallery.shootDate ?? '—'}</dd>
-  </div>
-  <div>
-    <dt>Zdjęcia</dt>
-    <dd>{gallery.photoCount} ({megabytes(gallery.bytesTotal)})</dd>
-  </div>
-  <div>
-    <dt>Termin</dt>
-    <dd>{left > 0 ? `jeszcze ${dayCount(left)}` : 'już minął'}</dd>
-  </div>
-</dl>
+<Frame id={dialogId} aria-labelledby={dialogId && `${dialogId}-title`}>
+  {dialogId && <h2 id={`${dialogId}-title`}>Usunąć tę galerię?</h2>}
 
-<p class="warn" role="alert">
-  Zniknie link klienta i wszystkie zdjęcia z serwera. Tego nie da się cofnąć —
-  jeśli nie masz ich już nigdzie indziej, trzeba będzie wysłać je od nowa.
-</p>
+  <dl class="what">
+    <div>
+      <dt>Klient</dt>
+      <dd>{gallery.clientName}</dd>
+    </div>
+    <div>
+      <dt>Data sesji</dt>
+      <dd>{gallery.shootDate ?? '—'}</dd>
+    </div>
+    <div>
+      <dt>Zdjęcia</dt>
+      <dd>{gallery.photoCount} ({megabytes(gallery.bytesTotal)})</dd>
+    </div>
+    <div>
+      <dt>Termin</dt>
+      <dd>{left > 0 ? `jeszcze ${dayCount(left)}` : 'już minął'}</dd>
+    </div>
+  </dl>
 
-<form method="POST" class="actions">
-  <input type="hidden" name="intent" value="delete-gallery" />
-  <button type="submit" class="danger">Tak, usuń galerię</button>
-  {
-    cancel ? (
-      <a class="cancel" href={cancel.href}>
-        {cancel.label}
-      </a>
-    ) : (
-      <button type="submit" class="cancel" formmethod="dialog" formnovalidate>
-        Nie, wróć do galerii
-      </button>
-    )
-  }
-</form>
+  <p class="warn" role="alert">
+    Zniknie link klienta i wszystkie zdjęcia z serwera. Tego nie da się cofnąć —
+    jeśli nie masz ich już nigdzie indziej, trzeba będzie wysłać je od nowa.
+  </p>
+
+  <form method="POST" action={action} class="actions">
+    <input type="hidden" name="intent" value="delete-gallery" />
+    <button type="submit" class="danger">Tak, usuń galerię</button>
+    {
+      cancel.href ? (
+        <a class="cancel" href={cancel.href}>
+          {cancel.label}
+        </a>
+      ) : (
+        <button type="submit" class="cancel" formmethod="dialog" formnovalidate>
+          {cancel.label}
+        </button>
+      )
+    }
+  </form>
+</Frame>
 
 <style>
+  /* The modal's own chrome. Scoped here rather than repeated on each page that
+     opens one, so every dialog in the panel is the same object. */
+  dialog {
+    /* Wide enough for the two buttons to sit side by side rather than stack:
+       at 32rem they missed by a couple of pixels. */
+    width: min(34rem, calc(100% - 2rem));
+    padding: clamp(1.4rem, 4vw, 2rem);
+    border: 1px solid var(--piaskowy);
+    border-radius: 4px;
+    background: var(--kremowy);
+    color: var(--tekst);
+  }
+  dialog::backdrop { background: rgba(74, 64, 56, 0.45); }
+  dialog h2 { margin: 0 0 1.4rem; }
+
   .what {
     margin: 0 0 2rem;
     border-top: 1px solid var(--piaskowy);
