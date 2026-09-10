@@ -12,6 +12,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { list, totalBytes } from '../../../server/galleries.js';
 import { daysUntil } from '../../../server/gallery-form.js';
 import { galleryEditPath, galleryViewPath } from '../../../server/paths.js';
+import { megabytes, gigabytes } from '../../../server/format.js';
 import { diskBudgetBytes } from '../../../server/config.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../server/sessions.js';
 
@@ -28,11 +29,9 @@ const galleries = await list();
 const used = await totalBytes();
 const usedFraction = Math.min(1, used / diskBudgetBytes);
 
-const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
-
 ---
 
-<BaseLayout title="Panel" wide={true} crumbs={[{ label: 'Galerie' }]}>
+<BaseLayout title="Panel" wide={true} crumbs={[{ label: 'Galeria' }]}>
   <header class="head">
     <h1>Galerie</h1>
     <a class="cta" href="/admin/galeria">Nowa galeria</a>
@@ -48,7 +47,7 @@ const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
 
   <section class="disk" aria-label="Wykorzystanie dysku">
     <div class="disk-line">
-      <span>{gb(used)} GB z {gb(diskBudgetBytes)} GB</span>
+      <span>{gigabytes(used)} z {gigabytes(diskBudgetBytes)}</span>
       <span class="muted">{Math.round(usedFraction * 100)}%</span>
     </div>
     <div class="bar">
@@ -102,7 +101,7 @@ const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
                   from before that column show a dash. */}
               <td class="pass">{gallery.password ?? '—'}</td>
               <td class="num">{gallery.photoCount}</td>
-              <td class="num">{gb(gallery.bytesTotal)} GB</td>
+              <td class="num">{megabytes(gallery.bytesTotal)}</td>
               <td class={gallery.expired ? 'expired' : ''}>
                 {gallery.expired ? 'wygasła' : `za ${daysUntil(gallery.expiresAt)} dni`}
               </td>

@@ -27,7 +27,7 @@ if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
 <BaseLayout
   title="Nowa galeria"
   wide={true}
-  crumbs={[{ label: 'Galerie', href: '/admin' }, { label: 'Nowa galeria' }]}
+  crumbs={[{ label: 'Galeria', href: '/admin' }, { label: 'Nowa galeria' }]}
 >
   <GalleryEditor
     client:load

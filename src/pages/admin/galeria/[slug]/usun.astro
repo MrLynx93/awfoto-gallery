@@ -16,6 +16,7 @@ import BaseLayout from '../../../../layouts/BaseLayout.astro';
 import { findBySlug } from '../../../../../server/galleries.js';
 import { removeGallery } from '../../../../../server/removal.js';
 import { daysUntil } from '../../../../../server/gallery-form.js';
+import { megabytes } from '../../../../../server/format.js';
 import { galleryEditPath, galleryViewPath } from '../../../../../server/paths.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../../../server/sessions.js';
 
@@ -41,7 +42,6 @@ if (Astro.request.method === 'POST') {
   return Astro.redirect('/admin?usunieto=1', 303);
 }
 
-const gb = (bytes: number) => (Number(bytes) / 1024 ** 3).toFixed(1);
 // expires_at is NOT NULL, so the fallback is unreachable; it is here because
 // daysUntil answers null for a gallery with no date and this file should not
 // pretend otherwise.
@@ -51,7 +51,7 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
 <BaseLayout
   title="Usuń galerię"
   crumbs={[
-    { label: 'Galerie', href: '/admin' },
+    { label: 'Galeria', href: '/admin' },
     { label: gallery.clientName, href: galleryViewPath(slug) },
     { label: 'Usuń' },
   ]}
@@ -70,7 +70,7 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
       </div>
       <div>
         <dt>Zdjęcia</dt>
-        <dd>{gallery.photoCount} ({gb(gallery.bytesTotal)} GB)</dd>
+        <dd>{gallery.photoCount} ({megabytes(gallery.bytesTotal)})</dd>
       </div>
       <div>
         <dt>Termin</dt>
