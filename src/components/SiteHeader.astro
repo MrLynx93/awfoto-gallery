@@ -1,0 +1,149 @@
+---
+/**
+ * The panel's header: the same wordmark the main site wears, and a breadcrumb
+ * trail saying where she is.
+ *
+ * Lifted from awfoto-site's SiteHeader — the mark, the spaced display type, the
+ * clay-coloured middle dot, the hairline under the bar — but only that part.
+ * There is no menu here: the panel has one list, and the way back to it is the
+ * trail rather than a nav item repeated on every screen.
+ *
+ * **A plain <img> from /public, deliberately, not `astro:assets`.** Astro's
+ * image service is sharp, and there is no sharp build for FreeBSD (CLAUDE.md,
+ * "Image resizing"). On the static site the optimisation happens in CI; here
+ * every page is server-rendered on the host itself, so an <Image> would route
+ * through /_image at request time and throw on import. The file is 640×555 and
+ * served as-is, cached for a year by the static handler in app.js.
+ */
+export interface Crumb {
+  label: string;
+  /** Omitted on the last crumb: it is where she already is. */
+  href?: string;
+}
+
+interface Props {
+  crumbs?: Crumb[];
+}
+
+const { crumbs = [] } = Astro.props;
+---
+
+<header class="bar">
+  <a class="wordmark" href="/admin">
+    <img
+      class="wordmark-mark"
+      src="/logo.png"
+      alt=""
+      width="640"
+      height="555"
+      loading="eager"
+      decoding="async"
+    />
+    <span>AW<em>·</em>Fotografia</span>
+  </a>
+
+  {
+    crumbs.length > 0 && (
+      <nav class="crumbs" aria-label="Ścieżka">
+        <ol>
+          {crumbs.map((crumb, index) => (
+            <li>
+              {crumb.href && index < crumbs.length - 1 ? (
+                <a href={crumb.href}>{crumb.label}</a>
+              ) : (
+                /* The editor renames this one in place when she saves a new
+                   gallery, so the trail does not keep saying "Nowa galeria"
+                   next to a gallery that now has a name. */
+                <span aria-current="page" data-crumb-current>
+                  {crumb.label}
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
+      </nav>
+    )
+  }
+</header>
+
+<style>
+  .bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.8rem 2rem;
+    padding: 1.2rem var(--pad-x);
+    border-bottom: 1px solid var(--piaskowy);
+    background: var(--kremowy);
+  }
+
+  .wordmark {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    gap: 0.7rem;
+    font-family: var(--display);
+    font-size: 1.2rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    color: var(--tekst);
+  }
+  .wordmark em {
+    font-style: normal;
+    color: var(--glina);
+  }
+  /* Sized by height, with the intrinsic ratio on the tag, so the row does not
+     jump when the image decodes. */
+  .wordmark-mark {
+    flex: none;
+    height: 2.4rem;
+    width: auto;
+  }
+
+  .crumbs ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tekst-jasny);
+  }
+  /* The separator is drawn rather than written, so it is not read aloud
+     between every step of the trail. */
+  .crumbs li + li::before {
+    content: '›';
+    margin-right: 0.55rem;
+    color: var(--taupe);
+  }
+  .crumbs a {
+    color: var(--tekst-jasny);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.25s, border-color 0.25s;
+  }
+  .crumbs a:hover {
+    color: var(--glina-ciemna);
+    border-color: var(--glina);
+  }
+  .crumbs [aria-current='page'] {
+    color: var(--tekst);
+  }
+
+  @media (max-width: 700px) {
+    .wordmark {
+      font-size: 1rem;
+      letter-spacing: 0.2em;
+      gap: 0.5rem;
+    }
+    .wordmark-mark {
+      height: 2rem;
+    }
+  }
+</style>

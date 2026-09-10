@@ -67,21 +67,23 @@ const STATUS_NOTE: Record<string, string> = {
 };
 ---
 
-<BaseLayout title={gallery.clientName} wide={true}>
+<BaseLayout
+  title={gallery.clientName}
+  wide={true}
+  crumbs={[{ label: 'Galerie', href: '/admin' }, { label: gallery.clientName }]}
+>
   <header class="head">
     <div>
       <h1>{gallery.clientName}</h1>
       {dateLabel && <p class="date">{dateLabel}</p>}
     </div>
     <nav class="head-links">
-      {/* Two things she can do to this gallery, and one way back. The actions
-          are buttons because they act; "wszystkie galerie" stays a link
-          because it only navigates. Deleting goes to the same confirmation
-          screen the list uses -- the originals go with it, and that decision
-          is not one to make from a hover. */}
+      {/* Only the two things she can do to this gallery -- the way back to the
+          list is the breadcrumb in the header now. Deleting goes to the same
+          confirmation screen the list uses: the originals go with it, and that
+          decision is not one to make from a hover. */}
       <a class="act" href={galleryEditPath(slug)}>Edytuj</a>
       <a class="act danger" href={`${galleryEditPath(slug)}/usun`}>Usuń</a>
-      <a class="back" href="/admin">Wszystkie galerie</a>
     </nav>
   </header>
 
@@ -191,12 +193,6 @@ const STATUS_NOTE: Record<string, string> = {
      as the confirmation screen it leads to. */
   .act.danger { color: #9c3b28; border-color: #e0c4bb; }
   .act.danger:hover { background: #9c3b28; border-color: #9c3b28; color: var(--biel); }
-
-  .back {
-    font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--tekst-jasny); text-decoration: none; margin-left: 0.4rem;
-  }
-  .back:hover { color: var(--glina-ciemna); }
 
   .warn {
     background: #f7ece6; border: 1px solid var(--taupe); border-radius: 4px;

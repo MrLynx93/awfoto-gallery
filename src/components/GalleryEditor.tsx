@@ -327,8 +327,20 @@ export default function GalleryEditor({
 
   // Several of these are open at once when she is catching up on a backlog,
   // and "Nowa galeria" five times over is no help in a row of tabs.
+  //
+  // The breadcrumb needs the same treatment, but only on the screen that
+  // started empty: there the last crumb says "Nowa galeria" beside a gallery
+  // that now has a name, and the page never reloads to correct itself. On an
+  // existing gallery's editor the last crumb is "Edycja" and renaming it would
+  // be nonsense -- hence the flag rather than a blind write.
+  const startedEmpty = useRef(initialGallery === null);
+
   useEffect(() => {
-    if (gallery) document.title = `${gallery.clientName} — AW Fotografia`;
+    if (!gallery) return;
+    document.title = `${gallery.clientName} — AW Fotografia`;
+    if (!startedEmpty.current) return;
+    const crumb = document.querySelector('[data-crumb-current]');
+    if (crumb) crumb.textContent = gallery.clientName;
   }, [gallery?.clientName]);
 
   useEffect(
@@ -356,12 +368,10 @@ export default function GalleryEditor({
       {/* The heading is here rather than on the page around it because it
           changes: a gallery created on this screen turns "Nowa galeria" into the
           client's name without a reload, and the expiry warning below has to be
-          able to go away the moment she gives the gallery a new term. */}
+          able to go away the moment she gives the gallery a new term. The way
+          back to the list is the breadcrumb in the header. */}
       <header className="editor-head">
         <h1>{gallery ? gallery.clientName : 'Nowa galeria'}</h1>
-        <a className="back" href="/admin">
-          Wszystkie galerie
-        </a>
       </header>
 
       {gallery?.expired && (

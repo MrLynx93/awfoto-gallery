@@ -18,24 +18,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
   gap: 1rem;
 }
 
 .editor-head h1 {
   margin: 0;
-}
-
-.back {
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--tekst-jasny);
-  text-decoration: none;
-}
-
-.back:hover {
-  color: var(--glina-ciemna);
 }
 
 /* Past its term: the client sees the expiry page, so this is the one thing on

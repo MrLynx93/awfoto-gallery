@@ -9,14 +9,26 @@
  * the brand — the same tokens, the same two self-hosted faces.
  */
 import '../styles/global.css';
+import SiteHeader from '../components/SiteHeader.astro';
+import type { Crumb } from '../components/SiteHeader.astro';
 
 interface Props {
   title: string;
   /** Wider pages (the gallery grid) opt out of the narrow reading column. */
   wide?: boolean;
+  /**
+   * Present on the panel's screens, absent on the client's gallery.
+   *
+   * The bar it turns on carries the brand mark and the trail back to the list,
+   * which is furniture for someone working through several galleries. The
+   * client sees one page, arrives by link and leaves; a nav bar there would be
+   * chrome around a thing that needs none. An empty array still draws the bar
+   * (the login screen wants the mark and has nowhere to go back to).
+   */
+  crumbs?: Crumb[];
 }
 
-const { title, wide = false } = Astro.props;
+const { title, wide = false, crumbs } = Astro.props;
 ---
 
 <!doctype html>
@@ -39,6 +51,8 @@ const { title, wide = false } = Astro.props;
     />
   </head>
   <body>
+    {crumbs && <SiteHeader crumbs={crumbs} />}
+
     <main class={wide ? 'wide' : ''}>
       <slot />
     </main>

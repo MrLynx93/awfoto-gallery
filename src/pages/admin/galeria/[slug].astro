@@ -55,7 +55,15 @@ const gallery = describeGallery(row);
 const password = readPassword(row);
 ---
 
-<BaseLayout title={gallery.clientName} wide={true}>
+<BaseLayout
+  title={gallery.clientName}
+  wide={true}
+  crumbs={[
+    { label: 'Galerie', href: '/admin' },
+    { label: gallery.clientName, href: gallery.viewPath },
+    { label: 'Edycja' },
+  ]}
+>
   <GalleryEditor
     client:load
     gallery={gallery}
