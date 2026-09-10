@@ -184,6 +184,12 @@ threat behind it. It also ignores `expires_at`, because an expired gallery is
 closed to the client and still on disk until the sweep, and the panel is where
 she decides which it should be.
 
+Both pages wear the site's bar — the mark from awfoto-site's `SiteHeader`, and
+nothing else on the client's, whose wordmark leads to aw-foto.pl rather than to
+a login screen. The client's gallery also says how long it has: "jeszcze 28 dni
+— do 8 października", above the grid rather than under it, because it is the
+reason to press the download button.
+
 Her own page for a gallery is a **separate page**, `/admin/g/:slug`, not a
 bypass inside the client's. `/g/:slug` keeps exactly one behaviour — gate, then
 grid — so it stays openable in a private window to see precisely what the client

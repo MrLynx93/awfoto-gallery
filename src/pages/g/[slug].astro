@@ -15,6 +15,8 @@ import GalleryGrid from '../../components/GalleryGrid.astro';
 import Lightbox from '../../components/Lightbox.astro';
 import { readManifest } from '../../../server/storage.js';
 import { findBySlug, isExpired } from '../../../server/galleries.js';
+import { daysUntil } from '../../../server/gallery-form.js';
+import { dayCount } from '../../../server/format.js';
 import * as rateLimit from '../../../server/rate-limit.js';
 import { verify } from '../../../server/passwords.js';
 import {
@@ -79,16 +81,31 @@ if (authorised && gallery?.status === 'ready') {
   }
 }
 
-const dateLabel = gallery?.shootDate
-  ? new Date(gallery.shootDate).toLocaleDateString('pl-PL', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    })
-  : null;
+const polishDate = (value: string) =>
+  new Date(value).toLocaleDateString('pl-PL', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+const dateLabel = gallery?.shootDate ? polishDate(gallery.shootDate) : null;
+
+// How long they have. Said plainly, on the page, because the alternative is a
+// client who finds out by coming back to an expired gallery -- and by then the
+// photographs are gone from the server for good.
+const daysLeft = gallery ? daysUntil(gallery.expiresAt) : null;
+const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
 ---
 
-<BaseLayout title={gallery?.clientName ?? 'Galeria'} wide={authorised}>
+{/* The same bar the panel wears, with no trail: this is one page, reached by a
+    link, and the mark is here to say whose photographs these are rather than to
+    navigate. It leads to the photographer's site, not to /admin. */}
+<BaseLayout
+  title={gallery?.clientName ?? 'Galeria'}
+  wide={authorised}
+  crumbs={[]}
+  homeHref="https://aw-foto.pl"
+>
   {
     !gallery || expired ? (
       <section class="message">
@@ -156,6 +173,13 @@ const dateLabel = gallery?.shootDate
             Pobierz wszystkie ({photos.length})
           </a>
         </header>
+
+        {daysLeft !== null && (
+          <p class="until">
+            Zdjęcia będą dostępne jeszcze {dayCount(daysLeft)} — do {untilLabel}.
+            Potem galeria wygaśnie, więc pobierz je wcześniej.
+          </p>
+        )}
 
         <GalleryGrid slug={slug} count={photos.length} />
         <Lightbox />
@@ -248,6 +272,15 @@ const dateLabel = gallery?.shootDate
   }
   .gallery-head h1 {
     margin-bottom: 0.15em;
+  }
+
+  /* Under the header rather than in the footer: it is the reason to press the
+     download button, and it should be read before the photographs rather than
+     after them. */
+  .until {
+    margin: -0.5rem 0 clamp(1.5rem, 4vw, 2.5rem);
+    font-size: 0.85rem;
+    color: var(--tekst-jasny);
   }
 
   .hint {

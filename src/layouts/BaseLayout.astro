@@ -17,18 +17,18 @@ interface Props {
   /** Wider pages (the gallery grid) opt out of the narrow reading column. */
   wide?: boolean;
   /**
-   * Present on the panel's screens, absent on the client's gallery.
+   * The breadcrumb trail, and whether to draw the header bar at all.
    *
-   * The bar it turns on carries the brand mark and the trail back to the list,
-   * which is furniture for someone working through several galleries. The
-   * client sees one page, arrives by link and leaves; a nav bar there would be
-   * chrome around a thing that needs none. An empty array still draws the bar
-   * (the login screen wants the mark and has nowhere to go back to).
+   * An empty array still draws the bar with just the mark -- which is what the
+   * login screen and the client's gallery want: both are one page with nowhere
+   * to go back to. Omitting the prop entirely leaves a page bare.
    */
   crumbs?: Crumb[];
+  /** Passed through to the header: where its wordmark leads. */
+  homeHref?: string;
 }
 
-const { title, wide = false, crumbs } = Astro.props;
+const { title, wide = false, crumbs, homeHref } = Astro.props;
 ---
 
 <!doctype html>
@@ -51,7 +51,7 @@ const { title, wide = false, crumbs } = Astro.props;
     />
   </head>
   <body>
-    {crumbs && <SiteHeader crumbs={crumbs} />}
+    {crumbs && <SiteHeader crumbs={crumbs} home={homeHref} />}
 
     <main class={wide ? 'wide' : ''}>
       <slot />

@@ -8,6 +8,10 @@
  * There is no menu here: the panel has one list, and the way back to it is the
  * trail rather than a nav item repeated on every screen.
  *
+ * The client's gallery wears the same bar with no trail at all: it is one page,
+ * reached by a link, and the mark is there to say whose photographs these are
+ * rather than to navigate anywhere.
+ *
  * **A plain <img> from /public, deliberately, not `astro:assets`.** Astro's
  * image service is sharp, and there is no sharp build for FreeBSD (CLAUDE.md,
  * "Image resizing"). On the static site the optimisation happens in CI; here
@@ -23,13 +27,19 @@ export interface Crumb {
 
 interface Props {
   crumbs?: Crumb[];
+  /**
+   * Where the mark leads. The panel's own screens go back to the list; the
+   * client's gallery goes to the photographer's site, because /admin is a login
+   * screen and sending a client there is an invitation to nothing.
+   */
+  home?: string;
 }
 
-const { crumbs = [] } = Astro.props;
+const { crumbs = [], home = '/admin' } = Astro.props;
 ---
 
 <header class="bar">
-  <a class="wordmark" href="/admin">
+  <a class="wordmark" href={home}>
     <img
       class="wordmark-mark"
       src="/logo.png"
