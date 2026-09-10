@@ -31,6 +31,10 @@ import Polish from '@uppy/locales/lib/pl_PL';
 import '@uppy/core/css/style.min.css';
 import '@uppy/dashboard/css/style.min.css';
 
+// Pure string arithmetic, no server imports, so it bundles into the island --
+// and the plural rule for "zdjęcie" is written once for the whole panel.
+import { photoCount } from '../../server/format.js';
+
 export interface GalleryView {
   slug: string;
   clientName: string;
@@ -101,7 +105,7 @@ export default function GalleryEditor({
   /** Files are waiting because the gallery could not be saved -- usually no name. */
   const [held, setHeld] = useState(false);
 
-  const [copied, setCopied] = useState<'link' | 'both' | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const nameInput = useRef<HTMLInputElement | null>(null);
   const dashboardRef = useRef<HTMLDivElement | null>(null);
@@ -351,15 +355,25 @@ export default function GalleryEditor({
     [],
   );
 
-  const copy = async (text: string, which: 'link' | 'both') => {
+  /**
+   * The link, and only the link.
+   *
+   * There was a "copy link and password" button too, and it was the wrong
+   * default: it puts the key in the same message as the door. She sends the
+   * link one way and reads the password out, or sends it separately -- which is
+   * what a password on a gallery is for. The password is on screen to be copied
+   * by hand when she wants it.
+   */
+  const copyLink = async () => {
+    if (!gallery) return;
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(which);
+      await navigator.clipboard.writeText(gallery.shareUrl);
+      setCopied(true);
       if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopied(null), 2500);
+      copyTimer.current = setTimeout(() => setCopied(false), 2500);
     } catch {
-      // Clipboard access can be refused; the values are on screen to be read.
-      setCopied(null);
+      // Clipboard access can be refused; the link is on screen to be read.
+      setCopied(false);
     }
   };
 
@@ -485,20 +499,8 @@ export default function GalleryEditor({
           )}
 
           <div className="finish-actions">
-            {password && (
-              <button
-                type="button"
-                onClick={() => copy(`${gallery.shareUrl}\nHasło: ${password}`, 'both')}
-              >
-                {copied === 'both' ? 'Skopiowane ✓' : 'Kopiuj link i hasło'}
-              </button>
-            )}
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => copy(gallery.shareUrl, 'link')}
-            >
-              {copied === 'link' ? 'Skopiowane ✓' : password ? 'Tylko link' : 'Kopiuj link'}
+            <button type="button" onClick={copyLink}>
+              {copied ? 'Skopiowane ✓' : 'Kopiuj link'}
             </button>
             {/* Her own view of the gallery -- no password gate. The link above
                 is the client's and does ask for one. */}
@@ -509,7 +511,9 @@ export default function GalleryEditor({
 
           <p className="finish-note">
             {STATUS_NOTE[gallery.status] ?? 'Link działa od razu.'}
-            {gallery.photoCount > 0 && ` W galerii jest ${gallery.photoCount} zdjęć.`}
+            {/* "W galerii: 3 zdjęcia" rather than "jest/są", which would have to
+                agree with the count as well as the noun. */}
+            {gallery.photoCount > 0 && ` W galerii: ${photoCount(gallery.photoCount)}.`}
           </p>
         </section>
       ) : (

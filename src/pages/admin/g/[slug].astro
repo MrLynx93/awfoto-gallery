@@ -141,26 +141,28 @@ const STATUS_NOTE: Record<string, string> = {
 </BaseLayout>
 
 {/* The copy button is added by this script rather than rendered above, so a
-    page without JavaScript shows no button that would do nothing. The values
-    are on screen either way. */}
-<script is:inline define:vars={{ shareUrl, password }}>
+    page without JavaScript shows no button that would do nothing. The link and
+    the password are on screen either way.
+
+    The link alone, never link-and-password together: that would put the key in
+    the same message as the door, and separating them is the entire point of a
+    gallery having a password. */}
+<script is:inline define:vars={{ shareUrl }}>
   const target = document.getElementById('access');
   if (target && navigator.clipboard) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy';
-    button.textContent = password ? 'Kopiuj link i hasło' : 'Kopiuj link';
+    button.textContent = 'Kopiuj link';
     button.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(
-          password ? `${shareUrl}\nHasło: ${password}` : shareUrl,
-        );
+        await navigator.clipboard.writeText(shareUrl);
         button.textContent = 'Skopiowane ✓';
         setTimeout(() => {
-          button.textContent = password ? 'Kopiuj link i hasło' : 'Kopiuj link';
+          button.textContent = 'Kopiuj link';
         }, 2500);
       } catch {
-        // Clipboard access can be refused; both values are readable on screen.
+        // Clipboard access can be refused; the link is readable on screen.
       }
     });
     target.append(button);
