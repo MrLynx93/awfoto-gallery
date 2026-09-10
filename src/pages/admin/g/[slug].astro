@@ -142,15 +142,14 @@ try {
     cancel={{ label: 'Nie, zostaw' }}
   />
 
-  <section class="photos">
-    <div class="photos-head">
-      <h2>{photos.length > 0 ? photoCount(photos.length) : 'Zdjęcia'}</h2>
-      {photos.length > 0 && (
-        <a class="download" href={`/g/${slug}/zip`}>
-          Pobierz wszystkie
-        </a>
-      )}
-    </div>
+  {/* A card like the details above it, so the page reads as three panels
+      rather than two and a loose grid. No "pobierz wszystkie" here: this is her
+      screen, the ZIP is what the client's page offers, and she has the
+      originals on the card they came from. */}
+  <section class="card photos">
+    <h2 class="card-title">
+      {photos.length > 0 ? photoCount(photos.length) : 'Zdjęcia'}
+    </h2>
 
     {/* What the client is seeing right now, next to the photos it is about --
         rather than tucked under the link, which is not what it describes. */}
@@ -174,24 +173,9 @@ try {
 </BaseLayout>
 
 <style>
+  /* The gap the editor's own sections have between them: this one is a sibling
+     of the cards above rather than a child of the island that draws them. */
   .photos { margin-top: 2rem; }
-
-  .photos-head {
-    display: flex; flex-wrap: wrap; align-items: center;
-    justify-content: space-between; gap: 1rem; margin-bottom: 1.2rem;
-  }
-  .photos-head h2 {
-    margin: 0; font-family: var(--body); font-size: 0.72rem;
-    letter-spacing: 0.14em; text-transform: uppercase; color: var(--tekst-jasny);
-  }
-
-  .download {
-    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
-    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
-    background: var(--glina); color: var(--biel); text-decoration: none;
-    transition: background 0.25s;
-  }
-  .download:hover { background: var(--glina-ciemna); }
 
   .removed {
     background: #e7ece2; border: 1px solid #ccd6c4; border-radius: 4px;
