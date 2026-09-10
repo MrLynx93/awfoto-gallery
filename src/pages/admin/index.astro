@@ -238,10 +238,21 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
     color: var(--tekst-jasny); text-decoration: none; border-bottom: 0;
   }
   td a.quiet:hover { color: var(--glina-ciemna); }
-  /* Two actions in one cell need space between them, and the destructive one
-     should not be the one the eye lands on first. */
+  /* Two actions in one cell need space between them. */
   .right .quiet + .quiet { margin-left: 1.1rem; }
-  td a.danger:hover { color: var(--czerwien); }
+
+  /* The one action in the row, and it deletes a wedding: a button rather than a
+     word, outlined in the red used nowhere else in the panel, filling on hover.
+     It still leads to a question -- see the dialog below the table. */
+  td a.danger {
+    padding: 0.55em 1.1em;
+    border: 1px solid var(--czerwien);
+    border-radius: 3px;
+    color: var(--czerwien);
+    line-height: 1.2;
+    transition: background 0.25s, color 0.25s;
+  }
+  td a.danger:hover { background: var(--czerwien); color: var(--biel); }
 
   .deleted {
     background: #e7ece2; border: 1px solid #ccd6c4; border-radius: 4px;
@@ -330,7 +341,12 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
       position: absolute; width: 1px; height: 1px;
       overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
     }
-    /* A finger cannot hover, so the bin is red where it sits. */
-    td a.danger { color: var(--czerwien); }
+    /* A finger cannot hover, so the bin is red where it sits -- and it is the
+       icon alone here, without the outline the wide layout's button wears. */
+    td a.danger {
+      padding: 0.5rem;
+      border: 0;
+      color: var(--czerwien);
+    }
   }
 </style>
