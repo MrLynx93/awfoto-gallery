@@ -16,7 +16,6 @@
  */
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import { sessionSecret } from './config.js';
-import { galleryEditPath } from './paths.js';
 
 const ADMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GALLERY_TTL_MS = 12 * 60 * 60 * 1000;
@@ -80,6 +79,30 @@ export function isAdmin(token) {
 }
 
 /**
+ * One cookie out of a raw `Cookie:` header.
+ *
+ * Astro pages get `Astro.cookies`; the Express routers -- the tus endpoint and
+ * the file routes -- get the header and nothing else, and both were picking it
+ * apart inline. Doing it once means the decode cannot be forgotten in one of
+ * them, which is the shape of bug that reads as "sometimes it logs me out".
+ */
+export function cookieFromHeader(header, name) {
+  const raw = String(header ?? '')
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+
+  if (raw === undefined) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    // A malformed %-escape is not a session; it is someone poking at us.
+    return null;
+  }
+}
+
+/**
  * httpOnly and SameSite=Lax: a gallery link arrives from a message app.
  *
  * `path` narrows a cookie to the one page that needs it. The default is the
@@ -103,34 +126,6 @@ export function cookieOptions(maxAgeMs, path = '/') {
     maxAge: Math.floor(maxAgeMs / 1000),
     path,
   };
-}
-
-/**
- * Carries a freshly created gallery's password past the request that made it.
- *
- * The editor is handed the plaintext in the response to the request that
- * created the gallery, so it can show it straight away without a reload. This
- * cookie is what makes it survive the *next* load of that page -- a refresh, or
- * coming back after lunch -- which the database cannot, because only the scrypt
- * hash is stored, deliberately.
- *
- * So it rides in a signed, httpOnly cookie scoped to that one gallery's editor:
- * readable by no script, sent to no other path, and gone within the day. The
- * value is a password she is about to send to a client in a message anyway, and
- * this keeps it out of the URL, where it would sit in browser history.
- */
-export const newGalleryCookieName = (slug) => `awf_new_${slug}`;
-
-/** The only path the cookie above is ever sent to: the gallery's own editor. */
-export const newGalleryCookiePath = galleryEditPath;
-
-export const issueNewGalleryPassword = (slug, password) =>
-  issue({ kind: 'new-gallery', gid: slug, password }, GALLERY_TTL_MS);
-
-export function readNewGalleryPassword(token, slug) {
-  const data = read(token);
-  if (!data || data.kind !== 'new-gallery' || data.gid !== slug) return null;
-  return data.password ?? null;
 }
 
 export const GALLERY_TTL = GALLERY_TTL_MS;

@@ -1,0 +1,229 @@
+---
+/**
+ * The photographer's view of a gallery: exactly what the client sees, with no
+ * password in front of it.
+ *
+ * She uploaded these photos. Making her type the client's code to check her own
+ * work is a lock with nothing behind it — and until the password was stored
+ * (server/passwords.js) she often could not have typed it anyway. So the admin
+ * session opens any gallery here, and `server/routes/files.js` honours the same
+ * session for the previews, the originals and the ZIP.
+ *
+ * Deliberately a *different URL* from /g/<slug> rather than a bypass bolted
+ * onto it. The client's page keeps exactly one behaviour — gate, then grid —
+ * which is what makes it possible to open it in a private window and see the
+ * real thing. Two audiences, two pages, no branch that could show the wrong one
+ * to the wrong person.
+ *
+ * An expired gallery still renders here. For the client it is closed; for her
+ * it is a gallery that is still on disk until the nightly sweep, and this is
+ * the screen where she notices in time to extend it.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import GalleryGrid from '../../../components/GalleryGrid.astro';
+import Lightbox from '../../../components/Lightbox.astro';
+import { readManifest } from '../../../../server/storage.js';
+import { findBySlug, isExpired, readPassword } from '../../../../server/galleries.js';
+import { galleryEditPath, galleryShareUrl } from '../../../../server/paths.js';
+import { ADMIN_COOKIE, isAdmin } from '../../../../server/sessions.js';
+
+if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
+  return Astro.redirect('/admin/login');
+}
+
+const { slug } = Astro.params;
+const gallery = await findBySlug(slug);
+
+// A slug that is not there means a stale bookmark or a swept gallery, and the
+// list of what does exist answers both.
+if (!gallery) {
+  return Astro.redirect('/admin');
+}
+
+let photos = [];
+try {
+  photos = (await readManifest(slug)).photos ?? [];
+} catch {
+  // No manifest yet: the worker has not finished, or there is nothing to show.
+  // The status line below says which.
+}
+
+const expired = isExpired(gallery);
+const password = readPassword(gallery);
+const shareUrl = galleryShareUrl(slug);
+
+const dateLabel = gallery.shootDate
+  ? new Date(gallery.shootDate).toLocaleDateString('pl-PL', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+  : null;
+
+const STATUS_NOTE: Record<string, string> = {
+  preparing: 'Zdjęcia jeszcze się przetwarzają. Klient widzi na razie informację, że galeria się przygotowuje.',
+  failed: 'Coś się nie udało przy przygotowaniu zdjęć. Otwórz „Edytuj” i wyślij je jeszcze raz.',
+  zip_unavailable: 'Paczka ZIP powstanie dopiero przy pobieraniu — na serwerze jest mało miejsca.',
+};
+---
+
+<BaseLayout title={gallery.clientName} wide={true}>
+  <header class="head">
+    <div>
+      <h1>{gallery.clientName}</h1>
+      {dateLabel && <p class="date">{dateLabel}</p>}
+    </div>
+    <nav class="head-links">
+      <a href={galleryEditPath(slug)}>Edytuj</a>
+      <a href="/admin">Wszystkie galerie</a>
+    </nav>
+  </header>
+
+  {
+    expired && (
+      <p class="warn" role="alert">
+        Termin minął — klient tej galerii już nie otworzy. Ty widzisz ją dopóki
+        nocne porządkowanie jej nie usunie. Żeby znów działała, ustaw nowy termin
+        w „Edytuj”.
+      </p>
+    )
+  }
+
+  {/* The link and the code, on the screen she is most likely to have open when
+      a client writes "what was the password again?". */}
+  <section class="access" id="access">
+    <div>
+      <p class="access-label">Link dla klienta</p>
+      <p class="access-value">{shareUrl}</p>
+    </div>
+    <div>
+      <p class="access-label">Hasło</p>
+      {
+        password ? (
+          <p class="access-value password">{password}</p>
+        ) : (
+          <p class="access-value muted">
+            Ta galeria powstała, zanim hasła dało się odczytać.{' '}
+            <a href={galleryEditPath(slug)}>Ustaw nowe</a>.
+          </p>
+        )
+      }
+    </div>
+  </section>
+
+  {
+    photos.length === 0 ? (
+      <p class="empty">
+        {STATUS_NOTE[gallery.status] ?? 'W tej galerii nie ma jeszcze żadnego zdjęcia.'}
+      </p>
+    ) : (
+      <>
+        <div class="bar">
+          <p class="count">{photos.length} zdjęć</p>
+          <a class="download" href={`/g/${slug}/zip`}>
+            Pobierz wszystkie
+          </a>
+        </div>
+
+        <GalleryGrid slug={gallery.slug} count={photos.length} />
+        <Lightbox />
+      </>
+    )
+  }
+</BaseLayout>
+
+{/* The copy button is added by this script rather than rendered above, so a
+    page without JavaScript shows no button that would do nothing. The values
+    are on screen either way. */}
+<script is:inline define:vars={{ shareUrl, password }}>
+  const target = document.getElementById('access');
+  if (target && navigator.clipboard) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy';
+    button.textContent = password ? 'Kopiuj link i hasło' : 'Kopiuj link';
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(
+          password ? `${shareUrl}\nHasło: ${password}` : shareUrl,
+        );
+        button.textContent = 'Skopiowane ✓';
+        setTimeout(() => {
+          button.textContent = password ? 'Kopiuj link i hasło' : 'Kopiuj link';
+        }, 2500);
+      } catch {
+        // Clipboard access can be refused; both values are readable on screen.
+      }
+    });
+    target.append(button);
+  }
+</script>
+
+<style>
+  .head {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    justify-content: space-between; gap: 1rem; margin-bottom: 1.6rem;
+  }
+  .head h1 { margin: 0 0 0.15em; }
+  .date {
+    margin: 0; color: var(--tekst-jasny); font-size: 0.85rem;
+    letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .head-links { display: flex; gap: 1.2rem; }
+  .head-links a {
+    font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--tekst-jasny); text-decoration: none;
+  }
+  .head-links a:hover { color: var(--glina-ciemna); }
+
+  .warn {
+    background: #f7ece6; border: 1px solid var(--taupe); border-radius: 4px;
+    padding: 1rem 1.2rem; margin: 0 0 1.6rem; color: var(--glina-ciemna);
+  }
+
+  .access {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1.5rem 2.5rem;
+    background: var(--bez); border: 1px solid var(--piaskowy);
+    border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 2rem;
+  }
+  .access-label {
+    font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--tekst-jasny); margin: 0 0 0.2rem;
+  }
+  .access-value { margin: 0; word-break: break-all; }
+  .access-value.password {
+    font-size: 1.5rem; letter-spacing: 0.3em; color: var(--glina-ciemna);
+  }
+  .access-value.muted { color: var(--tekst-jasny); font-size: 0.9rem; }
+</style>
+
+<style is:global>
+  /* Appended by the script above, so it cannot be styled by a scoped rule. */
+  #access .copy {
+    font-family: var(--body); font-size: 0.78rem; letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 0.9em 1.5em; border: 1px solid var(--taupe);
+    border-radius: 3px; background: transparent; color: var(--glina-ciemna);
+    cursor: pointer; margin-left: auto; transition: background 0.25s;
+  }
+  #access .copy:hover { background: var(--piaskowy); color: var(--tekst); }
+</style>
+
+<style>
+  .bar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: 1rem; margin-bottom: 1.2rem;
+  }
+  .count {
+    margin: 0; font-size: 0.78rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--tekst-jasny);
+  }
+  .download {
+    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
+    background: var(--glina); color: var(--biel); text-decoration: none;
+    transition: background 0.25s;
+  }
+  .download:hover { background: var(--glina-ciemna); }
+
+  .empty { color: var(--tekst-jasny); padding: 2.5rem 0; text-align: center; }
+</style>

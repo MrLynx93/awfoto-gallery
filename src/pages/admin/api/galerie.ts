@@ -12,13 +12,6 @@ import { create, findBySlug } from '../../../../server/galleries.js';
 import { describeGallery } from '../../../../server/gallery-view.js';
 import { readGalleryDetails, DEFAULT_EXPIRY_DAYS } from '../../../../server/gallery-form.js';
 import { generatePassword } from '../../../../server/passwords.js';
-import {
-  cookieOptions,
-  issueNewGalleryPassword,
-  newGalleryCookieName,
-  newGalleryCookiePath,
-  GALLERY_TTL,
-} from '../../../../server/sessions.js';
 import { json, readJsonBody, refuseUnlessAdmin } from './_admin-api';
 
 export const POST: APIRoute = async (context) => {
@@ -39,16 +32,9 @@ export const POST: APIRoute = async (context) => {
     password,
   });
 
-  // The plaintext is returned below so the screen can show it immediately, and
-  // also set here so a refresh of the editor still has it. The database keeps
-  // only the scrypt hash, so this cookie is the only copy that outlives the
-  // response.
-  context.cookies.set(
-    newGalleryCookieName(slug),
-    issueNewGalleryPassword(slug, password),
-    cookieOptions(GALLERY_TTL, newGalleryCookiePath(slug)),
-  );
-
+  // Returned so the screen can show it without another round trip. It survives
+  // a refresh because create() sealed a copy into the row -- which is what
+  // replaced the signed cookie this used to set.
   const gallery = await findBySlug(slug);
   return json({ gallery: describeGallery(gallery), password }, 201);
 };

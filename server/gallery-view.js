@@ -7,7 +7,7 @@
  */
 import { daysUntil } from './gallery-form.js';
 import { isExpired } from './galleries.js';
-import { galleryEditPath, galleryShareUrl } from './paths.js';
+import { galleryEditPath, galleryShareUrl, galleryViewPath } from './paths.js';
 
 export function describeGallery(gallery) {
   return {
@@ -22,5 +22,6 @@ export function describeGallery(gallery) {
     expired: isExpired(gallery),
     shareUrl: galleryShareUrl(gallery.slug),
     editPath: galleryEditPath(gallery.slug),
+    viewPath: galleryViewPath(gallery.slug),
   };
 }

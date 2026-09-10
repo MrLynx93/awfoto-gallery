@@ -189,7 +189,8 @@
   gap: 0.8rem;
 }
 
-.finish-actions button {
+.finish-actions button,
+.finish-actions .ghost {
   font-family: var(--body);
   font-size: 0.82rem;
   letter-spacing: 0.14em;
@@ -207,10 +208,15 @@
   background: var(--glina-ciemna);
 }
 
+/* Also worn by a link -- "Zobacz zdjęcia" is navigation, not an action, so it
+   is an <a> and needs the button's shape without its weight. */
 .finish-actions .ghost {
   background: transparent;
   color: var(--glina-ciemna);
   border: 1px solid var(--taupe);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .finish-actions .ghost:hover {

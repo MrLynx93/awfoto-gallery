@@ -11,7 +11,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { list, totalBytes } from '../../../server/galleries.js';
 import { daysUntil } from '../../../server/gallery-form.js';
-import { galleryEditPath } from '../../../server/paths.js';
+import { galleryEditPath, galleryViewPath } from '../../../server/paths.js';
 import { diskBudgetBytes } from '../../../server/config.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../server/sessions.js';
 
@@ -74,11 +74,15 @@ const STATUS_LABEL = {
     galleries.length === 0 ? (
       <p class="empty">Nie ma jeszcze żadnej galerii. Zacznij od „Nowa galeria”.</p>
     ) : (
+      /* Eight columns do not fit a phone, and squeezing them makes the whole
+         list unreadable rather than just the far end of it. */
+      <div class="scroller">
       <table>
         <thead>
           <tr>
             <th>Klient</th>
             <th>Sesja</th>
+            <th>Hasło</th>
             <th>Zdjęcia</th>
             <th>Rozmiar</th>
             <th>Wygasa</th>
@@ -90,9 +94,16 @@ const STATUS_LABEL = {
           {galleries.map((gallery) => (
             <tr>
               <td>
-                <a href={`/g/${gallery.slug}`}>{gallery.clientName}</a>
+                {/* Her own view, not the client's link: /g asks for the
+                    password, and she should not have to type a client's code to
+                    look at photos she uploaded. */}
+                <a href={galleryViewPath(gallery.slug)}>{gallery.clientName}</a>
               </td>
               <td class="muted">{gallery.shootDate ?? '—'}</td>
+              {/* Readable again from the row (server/passwords.js), so "what
+                  was the password?" is answered by the list itself. Galleries
+                  from before that column show a dash. */}
+              <td class="pass">{gallery.password ?? '—'}</td>
               <td class="num">{gallery.photoCount}</td>
               <td class="num">{gb(gallery.bytesTotal)} GB</td>
               <td class={gallery.expired ? 'expired' : ''}>
@@ -133,6 +144,7 @@ const STATUS_LABEL = {
           ))}
         </tbody>
       </table>
+      </div>
     )
   }
 </BaseLayout>
@@ -163,6 +175,7 @@ const STATUS_LABEL = {
   .bar-fill[data-level='warning'] { background: var(--glina); }
   .bar-fill[data-level='critical'] { background: var(--glina-ciemna); }
 
+  .scroller { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
   th {
     text-align: left; font-weight: 500; font-size: 0.72rem;
@@ -173,6 +186,7 @@ const STATUS_LABEL = {
   td a { color: var(--tekst); text-decoration: none; border-bottom: 1px solid var(--taupe); }
   td a:hover { color: var(--glina-ciemna); }
   .num { font-variant-numeric: tabular-nums; }
+  .pass { letter-spacing: 0.14em; color: var(--glina-ciemna); white-space: nowrap; }
   .right { text-align: right; white-space: nowrap; }
   /* `td a` above it is two elements' worth of specificity, so a bare .quiet
      lost to it and these links kept the client link's underline. */

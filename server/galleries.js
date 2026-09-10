@@ -5,7 +5,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { db } from './db.js';
-import { hash } from './passwords.js';
+import { hash, seal, unseal } from './passwords.js';
 
 /**
  * Slugs are read aloud and typed by hand, so they avoid the characters people
@@ -33,7 +33,8 @@ function makeSlug(length = 10) {
 export async function findBySlug(slug) {
   const [rows] = await db().query(
     `SELECT id, slug, client_name AS clientName, shoot_date AS shootDate,
-            password_hash AS passwordHash, status, photo_count AS photoCount,
+            password_hash AS passwordHash, password_enc AS passwordEnc,
+            status, photo_count AS photoCount,
             bytes_total AS bytesTotal, last_upload_at AS lastUploadAt,
             expires_at AS expiresAt, created_at AS createdAt
        FROM galleries
@@ -45,6 +46,9 @@ export async function findBySlug(slug) {
 
 export async function create({ clientName, shootDate, password, expiryDays = 30 }) {
   const passwordHash = await hash(password);
+  // Both, always: the hash decides whether a client gets in, the sealed copy is
+  // what the panel shows her afterwards. See server/passwords.js.
+  const passwordEnc = seal(password);
 
   // Retry on the unique index rather than checking first: two uploads starting
   // together would both pass a check-then-insert, and the index is the only
@@ -53,10 +57,11 @@ export async function create({ clientName, shootDate, password, expiryDays = 30 
     const slug = makeSlug();
     try {
       const [result] = await db().query(
-        `INSERT INTO galleries (slug, client_name, shoot_date, password_hash, expires_at)
-         VALUES (:slug, :clientName, :shootDate, :passwordHash,
+        `INSERT INTO galleries
+           (slug, client_name, shoot_date, password_hash, password_enc, expires_at)
+         VALUES (:slug, :clientName, :shootDate, :passwordHash, :passwordEnc,
                  DATE_ADD(NOW(), INTERVAL :expiryDays DAY))`,
-        { slug, clientName, shootDate: shootDate || null, passwordHash, expiryDays },
+        { slug, clientName, shootDate: shootDate || null, passwordHash, passwordEnc, expiryDays },
       );
       return { id: result.insertId, slug };
     } catch (error) {
@@ -136,16 +141,25 @@ export async function needingWork() {
 /**
  * Replaces a gallery's password.
  *
- * Needed because the plaintext is shown once and never stored -- if she loses
- * it before sending it on, the gallery is unopenable and the only remedy is a
- * new password rather than re-uploading every photo.
+ * Rarely needed now that the panel can show the existing one, but still the
+ * answer when a client forwards the message to someone she would rather not
+ * have let in -- and the only way back for a gallery sealed under a secret that
+ * has since been rotated.
  */
 export async function setPassword(slug, password) {
   await db().query(
-    'UPDATE galleries SET password_hash = :hash WHERE slug = :slug',
-    { slug, hash: await hash(password) },
+    'UPDATE galleries SET password_hash = :hash, password_enc = :enc WHERE slug = :slug',
+    { slug, hash: await hash(password), enc: seal(password) },
   );
 }
+
+/**
+ * The password to show her, or null when there is nothing to show: a gallery
+ * from before the column existed, or one sealed under a secret that has since
+ * changed. Callers offer a new password in that case.
+ */
+export const readPassword = (gallery) =>
+  gallery?.passwordEnc ? unseal(gallery.passwordEnc) : null;
 
 export async function markReady(slug, { photoCount, bytesTotal, status = 'ready' }) {
   await db().query(
@@ -161,6 +175,7 @@ export async function list() {
   const [rows] = await db().query(
     `SELECT slug, client_name AS clientName, shoot_date AS shootDate, status,
             photo_count AS photoCount, bytes_total AS bytesTotal,
+            password_enc AS passwordEnc,
             expires_at AS expiresAt, created_at AS createdAt,
             (expires_at < NOW()) AS expired
        FROM galleries
@@ -168,7 +183,15 @@ export async function list() {
       ORDER BY created_at DESC`,
   );
   // MySQL returns a boolean expression as 1/0; the templates want a boolean.
-  return rows.map((row) => ({ ...row, expired: Boolean(row.expired) }));
+  // The password is unsealed here rather than in the template: the dashboard
+  // shows every gallery's code at a glance, which is the point of it.
+  // The ciphertext itself does not leave this function -- the dashboard wants
+  // the code, and nothing downstream has any use for the sealed form.
+  return rows.map(({ passwordEnc, ...row }) => ({
+    ...row,
+    expired: Boolean(row.expired),
+    password: readPassword({ passwordEnc }),
+  }));
 }
 
 /** What the disk budget is measured against. */

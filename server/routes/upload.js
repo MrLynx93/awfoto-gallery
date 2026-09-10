@@ -25,7 +25,7 @@ import { FileStore } from '@tus/file-store';
 import { STORAGE_ROOT, baseUrl } from '../config.js';
 import { originalsDir, galleryDir } from '../storage.js';
 import { findBySlug, touchUpload } from '../galleries.js';
-import { ADMIN_COOKIE, isAdmin } from '../sessions.js';
+import { ADMIN_COOKIE, cookieFromHeader, isAdmin } from '../sessions.js';
 
 export const uploadRouter = express.Router();
 
@@ -65,13 +65,7 @@ function wakeWorker() {
 }
 
 function adminOnly(req, res, next) {
-  const cookie = req.headers.cookie
-    ?.split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_COOKIE}=`))
-    ?.split('=')[1];
-
-  if (!isAdmin(decodeURIComponent(cookie ?? ''))) {
+  if (!isAdmin(cookieFromHeader(req.headers.cookie, ADMIN_COOKIE))) {
     return res.status(403).json({ error: 'Zaloguj się ponownie.' });
   }
   next();

@@ -42,6 +42,7 @@ export interface GalleryView {
   expired: boolean;
   shareUrl: string;
   editPath: string;
+  viewPath: string;
 }
 
 interface ExpiryChoice {
@@ -53,9 +54,9 @@ interface Props {
   /** null on the new-gallery screen; the gallery itself when editing one. */
   gallery: GalleryView | null;
   /**
-   * null whenever the signed cookie carrying it is gone -- another browser, or
-   * more than twelve hours later. Only the scrypt hash is stored, so there is
-   * nothing to recover and the panel offers a new password instead.
+   * Null only for a gallery made before passwords were stored readably, or one
+   * sealed under a SESSION_SECRET that has since been rotated. Otherwise it is
+   * simply here, every time this screen is opened -- see server/passwords.js.
    */
   password: string | null;
   expiryChoices: ExpiryChoice[];
@@ -463,8 +464,8 @@ export default function GalleryEditor({
                back here with the new password. */
             <form className="repass" method="POST">
               <p>
-                Hasło pokazuje się tylko raz, zaraz po założeniu galerii, i nie da
-                się go już odczytać. Jeśli go nie masz, ustaw nowe — stare
+                Tej galerii nie da się już odczytać hasła — powstała, zanim panel
+                zaczął je zapamiętywać. Ustaw nowe i wyślij je klientowi; stare
                 przestanie wtedy działać.
               </p>
               <button type="submit" name="intent" value="new-password">
@@ -489,6 +490,11 @@ export default function GalleryEditor({
             >
               {copied === 'link' ? 'Skopiowane ✓' : password ? 'Tylko link' : 'Kopiuj link'}
             </button>
+            {/* Her own view of the gallery -- no password gate. The link above
+                is the client's and does ask for one. */}
+            <a className="ghost" href={gallery.viewPath}>
+              Zobacz zdjęcia
+            </a>
           </div>
 
           <p className="finish-note">

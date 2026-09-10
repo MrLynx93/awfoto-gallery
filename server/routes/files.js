@@ -20,7 +20,13 @@ import {
   archivePath,
 } from '../storage.js';
 import { findBySlug, isExpired } from '../galleries.js';
-import { galleryCookieName, hasGalleryAccess } from '../sessions.js';
+import {
+  ADMIN_COOKIE,
+  cookieFromHeader,
+  galleryCookieName,
+  hasGalleryAccess,
+  isAdmin,
+} from '../sessions.js';
 
 export const filesRouter = express.Router();
 
@@ -29,6 +35,14 @@ export const filesRouter = express.Router();
  * accidentally skip half of it. Answers 404 for "no such gallery", "expired"
  * and "not authorised" alike: a client who has not passed the gate should not
  * be able to tell which galleries exist.
+ *
+ * Two ways in. A client holds a gallery cookie, minted by the password gate and
+ * naming this one gallery. The photographer holds the admin session, and it
+ * opens every gallery without a password -- she uploaded these photos, and
+ * making her type the client's code to check her own work (or worse, keeping a
+ * password she can no longer read) is a lock with no threat behind it. The
+ * expiry is hers to ignore too: an expired gallery is closed to the client and
+ * still on disk until the sweep, and the panel is where she decides which.
  */
 async function authorise(req, res) {
   const { slug } = req.params;
@@ -37,18 +51,22 @@ async function authorise(req, res) {
   // is condemned by its row before the sweep unlinks anything, so checking the
   // manifest here would keep serving photos for a gallery already marked dead.
   const gallery = await findBySlug(slug);
-  if (!gallery || isExpired(gallery)) {
+  if (!gallery) {
     res.status(404).end();
     return null;
   }
 
-  const cookie = req.headers.cookie
-    ?.split(';')
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${galleryCookieName(slug)}=`))
-    ?.split('=')[1];
+  if (isAdmin(cookieFromHeader(req.headers.cookie, ADMIN_COOKIE))) {
+    return gallery;
+  }
 
-  if (!hasGalleryAccess(decodeURIComponent(cookie ?? ''), slug)) {
+  if (isExpired(gallery)) {
+    res.status(404).end();
+    return null;
+  }
+
+  const cookie = cookieFromHeader(req.headers.cookie, galleryCookieName(slug));
+  if (!hasGalleryAccess(cookie, slug)) {
     res.status(404).end();
     return null;
   }

@@ -8,8 +8,16 @@
  *
  * One helper serves both the admin password and each gallery's password.
  */
-import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  hkdfSync,
+  randomBytes,
+  scrypt as scryptCb,
+  timingSafeEqual,
+} from 'node:crypto';
 import { promisify } from 'node:util';
+import { sessionSecret } from './config.js';
 
 const scrypt = promisify(scryptCb);
 
@@ -79,4 +87,76 @@ export function generatePassword(length = 8) {
     if (b < 248) out += ALPHABET[b % ALPHABET.length];
   }
   return out;
+}
+
+/**
+ * A gallery's password, kept so the panel can show it again.
+ *
+ * This is the one place the project stores something it can read back, and it
+ * is a deliberate exception rather than a lapse. A gallery password is not an
+ * account credential: it is a short code she reads out over the phone and
+ * pastes into a message, alongside a link that is itself most of the secret.
+ * The alternative -- what this replaced -- was that the password existed for
+ * one screen and then only a new one could be issued, which means telling a
+ * client "the code I sent you last week is dead now" because she reopened the
+ * panel. That is a worse outcome than the risk below.
+ *
+ * **The admin password is not stored this way and must never be.** It stays
+ * scrypt-only, one-way, in .env. Only per-gallery codes are sealed here.
+ *
+ * Sealed rather than plain, so a database dump on its own reveals nothing: the
+ * key is derived from SESSION_SECRET, which lives in .env and never in MySQL.
+ * An attacker needs both. `password_hash` stays the authority for verifying a
+ * client's attempt, so losing or rotating the secret costs the *display* of old
+ * passwords and nothing else -- galleries keep opening, and unseal() answers
+ * null so the screen offers a new password exactly as it did before.
+ */
+const SEAL_VERSION = 'v1';
+const IV_LENGTH = 12;
+
+/**
+ * HKDF, so the encryption key is a distinct value from the one signing cookies
+ * even though both descend from SESSION_SECRET. Derived per call: the secret is
+ * read through a function that throws when it is missing, and this module is
+ * imported by code paths that must not fail merely for existing.
+ */
+function sealKey() {
+  return Buffer.from(
+    hkdfSync('sha256', sessionSecret(), Buffer.from('awfoto-gallery-password'), Buffer.from(SEAL_VERSION), 32),
+  );
+}
+
+/** `v1$iv$tag$ciphertext`, base64url, in one VARCHAR column. */
+export function seal(plain) {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv('aes-256-gcm', sealKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
+  return [
+    SEAL_VERSION,
+    iv.toString('base64url'),
+    cipher.getAuthTag().toString('base64url'),
+    ciphertext.toString('base64url'),
+  ].join('$');
+}
+
+/**
+ * Returns null for anything it cannot open: a gallery from before this column
+ * existed, a row written under a different SESSION_SECRET, a tampered value.
+ * Every caller treats null as "no password to show", which is a state the panel
+ * already had to handle.
+ */
+export function unseal(sealed) {
+  try {
+    const [version, iv, tag, ciphertext] = String(sealed).split('$');
+    if (version !== SEAL_VERSION) return null;
+
+    const decipher = createDecipheriv('aes-256-gcm', sealKey(), Buffer.from(iv, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(ciphertext, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch {
+    return null;
+  }
 }

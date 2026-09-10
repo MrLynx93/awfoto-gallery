@@ -178,6 +178,18 @@ moves:
 | `/g/:slug/photo/:photo` | one original, `Content-Disposition: attachment` |
 | `/g/:slug/zip` | the whole archive, as an attachment |
 
+The admin session is the second key to all four. She uploaded these photos;
+making her type a client's code to look at her own work is a lock with no
+threat behind it. It also ignores `expires_at`, because an expired gallery is
+closed to the client and still on disk until the sweep, and the panel is where
+she decides which it should be.
+
+Her own view of a gallery is a **separate page**, `/admin/g/:slug`, not a bypass
+inside the client's. `/g/:slug` keeps exactly one behaviour — gate, then grid —
+so it stays openable in a private window to see precisely what the client sees,
+and no branch can show the wrong page to the wrong person. Both render the same
+`GalleryGrid` and `Lightbox` off the same preview routes.
+
 ### On "Node must never stream multi-GB files"
 
 Earlier drafts of this file said that. It is **half true, and the half that is
@@ -297,6 +309,19 @@ worth the complexity here.
 - **Password storage** — `node:crypto` scrypt, `N=16384, r=8, p=1`, 16-byte salt,
   `timingSafeEqual` on compare. Same helper for the gallery password and the admin
   password.
+
+  A **gallery** password is additionally kept in a form the panel can read back:
+  AES-256-GCM under a key derived from `SESSION_SECRET` by HKDF, in
+  `galleries.password_enc` (`seal()` / `unseal()` in `server/passwords.js`). The
+  hash stays the authority at the gate; the sealed copy exists so the admin can
+  see the code any time instead of only on the screen that created it — the old
+  behaviour meant reopening the panel a week later left her unable to tell a
+  client how to get in, with "issue a new password" as the only remedy, which
+  silently kills the code she already sent. A database dump alone reveals
+  nothing, since the key lives in `.env`; a rotated secret costs the *display* of
+  old passwords and nothing else, and those galleries fall back to offering a new
+  one. **The admin password is never stored this way** — it stays one-way, in
+  `.env`, and nothing in the app can read it back.
 - **Admin auth** — a single admin password plus a signed `httpOnly` session cookie
   (~30 days), not an obscure URL. The browser's Basic-auth dialog can't be written in
   Polish and is awkward on a phone.
