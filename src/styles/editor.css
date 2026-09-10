@@ -161,14 +161,25 @@
   color: var(--tekst-jasny);
 }
 
-/* The finish line. She has just spent an hour on this screen; the link and the
-   password are the only things that matter at the end of it, so they get the
-   weight rather than the drop zone that is now empty. */
+/* What she opens the screen for: the link and the code, at the top, each in its
+   own column with its own button. Two columns rather than one stack because
+   they are two separate things to send, and copying them together is exactly
+   what this stopped doing. One column on a phone, where side by side would be
+   two cramped halves. */
 .finish {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: clamp(1.4rem, 3vw, 2.5rem);
   background: var(--bez);
   border: 1px solid var(--piaskowy);
   border-radius: 4px;
   padding: clamp(1.5rem, 4vw, 2.2rem);
+}
+
+.finish-part {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .finish-label {
@@ -181,7 +192,7 @@
 
 .finish-link {
   font-size: 1.05rem;
-  margin: 0 0 1.4rem;
+  margin: 0 0 1.1rem;
   word-break: break-all;
   color: var(--tekst);
 }
@@ -190,16 +201,18 @@
   font-family: var(--body);
   font-size: 2rem;
   letter-spacing: 0.3em;
-  margin: 0 0 1.6rem;
+  margin: 0 0 1.1rem;
   color: var(--glina-ciemna);
+  word-break: break-all;
 }
 
-.finish-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.8rem;
+/* Pushes each button to the bottom of its column, so the two line up even when
+   the link wraps to two lines and the password does not. */
+.finish-part > :last-child {
+  margin-top: auto;
 }
 
+.finish-part button,
 .finish-actions button,
 .finish-actions .ghost {
   font-family: var(--body);
@@ -215,6 +228,7 @@
   transition: background 0.25s;
 }
 
+.finish-part button:hover,
 .finish-actions button:hover {
   background: var(--glina-ciemna);
 }
@@ -317,4 +331,79 @@
 /* Between the details and the drop zone, before there is a link to show. */
 .editor > .hint {
   margin: 0;
+}
+
+/*
+ * The drop zone as a photo.
+ *
+ * Astro wraps an island in <astro-island>, which would otherwise sit in the
+ * grid as the cell and leave the uploader stretched inside it; `display:
+ * contents` takes the wrapper out of the layout so the card itself is the grid
+ * item, exactly like a <button class="photo"> beside it.
+ */
+.photo-grid astro-island {
+  display: contents;
+}
+
+.uploader-card {
+  aspect-ratio: 1;
+  border: 1px dashed var(--taupe);
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--biel);
+}
+
+.uploader-card .uploader-zone,
+.uploader-card .uppy-Root,
+.uploader-card .uppy-Dashboard,
+.uploader-card .uppy-Dashboard-inner {
+  height: 100%;
+  width: 100%;
+}
+
+/* Uppy draws its own dotted frame and white ground; inside a card that is a
+   border within a border. */
+.uploader-card .uppy-Dashboard-inner,
+.uploader-card .uppy-Dashboard-AddFiles {
+  border: 0;
+  background: transparent;
+}
+
+/* Centred in the card, in the panel's own voice rather than Uppy's default
+   blue-on-white. */
+.uploader-card .uppy-Dashboard-AddFiles {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Both empty in a card: the note is one line of "JPG i PNG" the tile has no
+   room for, and the list is Uppy's row of extra sources, which this build has
+   none of. Left in, the empty list takes 183px of the 251 and pushes the one
+   line of text that matters to the top. */
+.uploader-card .uppy-Dashboard-AddFiles-info,
+.uploader-card .uppy-Dashboard-AddFiles-list {
+  display: none;
+}
+.uploader-card .uppy-Dashboard-AddFiles-title {
+  font-family: var(--body);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--tekst-jasny);
+  padding: 0 1rem;
+}
+.uploader-card .uppy-Dashboard-browse {
+  color: var(--glina-ciemna);
+  font-weight: 400;
+}
+.uploader-card .uppy-Dashboard-browse:hover,
+.uploader-card .uppy-Dashboard-browse:focus {
+  color: var(--glina);
+  border-bottom-color: var(--glina);
+}
+
+/* The status lines belong under the whole grid, not squeezed into one cell. */
+.uploader-card .status,
+.uploader-card .errors {
+  display: none;
 }

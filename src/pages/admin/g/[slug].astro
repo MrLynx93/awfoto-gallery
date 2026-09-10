@@ -25,6 +25,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
 import GalleryEditor from '../../../components/GalleryEditor.tsx';
 import DeleteGalleryConfirm from '../../../components/DeleteGalleryConfirm.astro';
 import GalleryGrid from '../../../components/GalleryGrid.astro';
+import PhotoUploader from '../../../components/PhotoUploader.tsx';
 import Lightbox from '../../../components/Lightbox.astro';
 import { readManifest } from '../../../../server/storage.js';
 import {
@@ -98,6 +99,15 @@ const gallery = describeGallery(row);
 const password = readPassword(row);
 const justRemoved = Astro.url.searchParams.has('zdjecie');
 
+/** What the client is seeing right now, in her words rather than the row's. */
+const STATUS_NOTE: Record<string, string> = {
+  preparing: 'Przygotowuję zdjęcia. Klient widzi na razie informację, że galeria się szykuje.',
+  ready: 'Galeria jest gotowa — klient widzi zdjęcia i może pobrać wszystkie naraz.',
+  failed: 'Coś się nie udało przy przygotowaniu zdjęć. Wyślij je jeszcze raz.',
+  zip_unavailable:
+    'Galeria jest gotowa. Paczka ZIP powstanie dopiero przy pobieraniu, bo na serwerze jest mało miejsca.',
+};
+
 let photos = [];
 try {
   photos = (await readManifest(slug)).photos ?? [];
@@ -129,31 +139,38 @@ try {
   <DeleteGalleryConfirm
     gallery={row}
     dialogId="usun-dialog"
-    cancel={{ label: 'Nie, wróć do galerii' }}
+    cancel={{ label: 'Nie, zostaw' }}
   />
 
-  {
-    photos.length > 0 && (
-      <section class="photos">
-        <div class="photos-head">
-          <h2>{photoCount(photos.length)}</h2>
-          <a class="download" href={`/g/${slug}/zip`}>
-            Pobierz wszystkie
-          </a>
-        </div>
+  <section class="photos">
+    <div class="photos-head">
+      <h2>{photos.length > 0 ? photoCount(photos.length) : 'Zdjęcia'}</h2>
+      {photos.length > 0 && (
+        <a class="download" href={`/g/${slug}/zip`}>
+          Pobierz wszystkie
+        </a>
+      )}
+    </div>
 
-        {justRemoved && (
-          <p class="removed" role="status">
-            Zdjęcie zostało usunięte. Paczka do pobrania powstaje od nowa — przez
-            chwilę klient zobaczy informację, że galeria się przygotowuje.
-          </p>
-        )}
+    {/* What the client is seeing right now, next to the photos it is about --
+        rather than tucked under the link, which is not what it describes. */}
+    <p class="state">{STATUS_NOTE[gallery.status] ?? 'Link działa od razu.'}</p>
 
-        <GalleryGrid slug={row.slug} count={photos.length} deletable={true} />
-        <Lightbox />
-      </section>
-    )
-  }
+    {justRemoved && (
+      <p class="removed" role="status">
+        Zdjęcie zostało usunięte. Paczka do pobrania powstaje od nowa — przez
+        chwilę klient zobaczy informację, że galeria się przygotowuje.
+      </p>
+    )}
+
+    <GalleryGrid slug={row.slug} count={photos.length} deletable={true}>
+      {/* The drop zone, shaped like the photographs it sits among. Astro wraps
+          an island in <astro-island>, which `display: contents` keeps out of the
+          grid's way so the uploader itself is the cell. */}
+      <PhotoUploader client:load slug={row.slug} variant="card" slot="lead" />
+    </GalleryGrid>
+    {photos.length > 0 && <Lightbox />}
+  </section>
 </BaseLayout>
 
 <style>

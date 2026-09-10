@@ -311,8 +311,13 @@ One screen. Nothing else on it.
 
 The same screen is also the edit screen, and the gallery's own page.
 `/admin/galeria` opens it empty; `/admin/g/<slug>` is it for a gallery that
-exists — details filled in, link and password above the drop zone, the photos
-below, more welcome. There is no separate edit form and no view/edit pair: she
+exists. There the order is what she came for: the **link and the password
+first**, in two columns with a copy button each — never one button for both,
+which would put the key in the same message as the door — then the details, then
+the photos. The drop zone is the **first card in the photo grid**, the same size
+as the photographs beside it, because adding photos belongs among the photos;
+`PhotoUploader.tsx` is that card here and the tall panel on the empty screen,
+where dropping a folder is one of the two ways a gallery gets created. There is no separate edit form and no view/edit pair: she
 is the only person who opens either, she is always allowed to change what she is
 looking at, and "which of the two am I on?" is not a question the panel should
 ask. Nothing on that page is a second gallery for the client she says she forgot

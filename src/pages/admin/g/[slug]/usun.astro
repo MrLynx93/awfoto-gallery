@@ -45,7 +45,7 @@ if (Astro.request.method === 'POST') {
 // of its "Usuń galerię" button. "No" should then put her back where she was.
 const fromGallery = Astro.url.searchParams.get('wroc') === 'galeria';
 const cancel = fromGallery
-  ? { href: galleryAdminPath(slug), label: 'Nie, wróć do galerii' }
+  ? { href: galleryAdminPath(slug), label: 'Nie, zostaw' }
   : { href: '/admin', label: 'Nie, wróć do listy' };
 ---
 

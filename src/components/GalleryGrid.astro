@@ -27,6 +27,11 @@ const photos = Array.from({ length: count }, (_, index) => index);
 ---
 
 <div class="photo-grid" id="photo-grid">
+  {/* The panel puts its drop zone here, as the first card in the grid: adding
+      photos belongs among the photos rather than in a panel above them. The
+      client's page passes nothing, so the grid starts at the first photograph. */}
+  <slot name="lead" />
+
   {
     photos.map((index) => (
       <div class="tile">
@@ -122,12 +127,16 @@ const photos = Array.from({ length: count }, (_, index) => index);
 
   .photo {
     padding: 0;
-    border: 0;
+    /* A hairline, so a light photograph has an edge rather than bleeding into
+       the cream behind it. */
+    border: 1px solid var(--piaskowy);
     background: var(--bez);
     cursor: zoom-in;
     overflow: hidden;
     border-radius: 3px;
     aspect-ratio: 1;
+    display: block;
+    width: 100%;
   }
   .photo img {
     width: 100%;

@@ -1,39 +1,26 @@
 /**
- * One screen for a gallery: its details, its link and password, and the photos.
+ * A gallery's details, its link and its password.
  *
- * This replaces a two-page wizard -- name the session, then upload on the next
- * page -- for two reasons. The obvious one is that there was never enough on
- * either page to justify the step. The one that decided it is resumability: the
- * drop zone has to stay put while photos are transferring, so changing a name
- * or a date cannot be a form POST that reloads the page and throws away the
- * queue. Everything here talks to /admin/api/galerie over fetch, and the page
- * does not navigate once it is open.
+ * The link and the code come first, because that is what she opens the screen
+ * for nine times out of ten -- to send them to a client, or to answer "what was
+ * the password again?". The fields under them are corrections, and they save
+ * themselves; the button below them only exists on the screen where the first
+ * save has to *create* something.
  *
- * The same component is the edit screen, opened from the dashboard. An existing
- * gallery only differs in what it starts with: its details are filled in, and
- * its expiry already has a date, so the dropdown offers "leave it as it is"
- * alongside a new term.
+ * The photos are not in here. On a gallery that exists they are the page's own
+ * grid, with the drop zone as its first card (PhotoUploader); on the empty
+ * screen this component renders that uploader itself, because there dropping a
+ * folder is what creates the gallery in the first place.
  *
- * The constraint that outranks everything here: it has to be usable by someone
- * who does not know what a file path is. So one drop zone, per-file progress,
- * errors in plain Polish, and a finish line that is unmistakable -- the link and
- * the password, large, with one button that copies both.
+ * Everything talks to /admin/api/galerie over fetch, and the page never
+ * navigates: a reload would empty an upload queue mid-transfer.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Uppy from '@uppy/core';
-import Tus from '@uppy/tus';
-// @uppy/react v6 is headless -- it exports hooks and primitives, not a
-// Dashboard component. The Dashboard is still the right UI here (CLAUDE.md
-// asks for per-file progress), so it is mounted as a plugin against a ref.
-import Dashboard from '@uppy/dashboard';
-import Polish from '@uppy/locales/lib/pl_PL';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import '@uppy/core/css/style.min.css';
-import '@uppy/dashboard/css/style.min.css';
-
+import PhotoUploader from './PhotoUploader.tsx';
 // Pure string arithmetic, no server imports, so it bundles into the island --
-// and the plural rule for "zdjęcie" is written once for the whole panel.
-import { dayCount, photoCount } from '../../server/format.js';
+// and the plural rule is written once for the whole panel.
+import { dayCount } from '../../server/format.js';
 
 export interface GalleryView {
   slug: string;
@@ -70,15 +57,13 @@ interface Props {
    * the originals go with it.
    */
   deletePath?: string;
+  /**
+   * The new-gallery screen carries its own drop zone, because dropping a folder
+   * there is one of the two ways a gallery gets created. A gallery that exists
+   * has its uploader in the photo grid instead.
+   */
+  withUploader?: boolean;
 }
-
-const STATUS_NOTE: Record<string, string> = {
-  preparing: 'Przygotowuję zdjęcia. Klient widzi na razie informację, że galeria się szykuje.',
-  ready: 'Galeria jest gotowa — klient widzi zdjęcia i może pobrać wszystkie naraz.',
-  failed: 'Coś się nie udało przy przygotowaniu zdjęć. Spróbuj wysłać je jeszcze raz.',
-  zip_unavailable:
-    'Galeria jest gotowa. Paczka ZIP powstanie dopiero przy pobieraniu, bo na serwerze jest mało miejsca.',
-};
 
 /** '' means "leave the expiry alone", which is the default when editing. */
 const UNCHANGED = '';
@@ -89,6 +74,7 @@ export default function GalleryEditor({
   expiryChoices,
   defaultExpiryDays,
   deletePath,
+  withUploader = false,
 }: Props) {
   const [gallery, setGallery] = useState<GalleryView | null>(initialGallery);
   const [password, setPassword] = useState<string | null>(initialPassword);
@@ -104,17 +90,9 @@ export default function GalleryEditor({
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
-  const [uploading, setUploading] = useState(false);
-  const [sent, setSent] = useState(0);
-  const [failed, setFailed] = useState<string[]>([]);
-  /** Files are waiting because the gallery could not be saved -- usually no name. */
-  const [held, setHeld] = useState(false);
-
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'link' | 'password' | null>(null);
 
   const nameInput = useRef<HTMLInputElement | null>(null);
-  const dashboardRef = useRef<HTMLDivElement | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -124,39 +102,6 @@ export default function GalleryEditor({
     clientName !== gallery.clientName ||
     shootDate !== gallery.shootDate ||
     expiryDays !== UNCHANGED;
-
-  const uppy = useMemo(
-    () =>
-      new Uppy({
-        locale: Polish,
-        // Not autoProceed: a file cannot be attached to a gallery that does not
-        // exist yet, so the first drop has to create one first. startUpload()
-        // below does that and then starts the transfer itself.
-        autoProceed: false,
-        // Photographs only. Restricting here means a stray .DS_Store or an
-        // XMP sidecar from the Lightroom folder is rejected before it costs
-        // any transfer, rather than confusing the worker later.
-        restrictions: { allowedFileTypes: ['image/jpeg', 'image/png', '.jpg', '.jpeg', '.png'] },
-      }).use(Tus, {
-        // Absolute, from the page's own origin. tus-js-client resolves the
-        // server's Location against this endpoint, and giving it a relative
-        // base leaves that resolution dependent on document state we do not
-        // control. The page is served over https, so this is too.
-        endpoint:
-          typeof window === 'undefined'
-            ? '/admin/upload'
-            : `${window.location.origin}/admin/upload`,
-        // 6 MB: comfortably under any proxy body limit, and small enough that a
-        // dropped connection costs seconds rather than minutes of re-transfer.
-        chunkSize: 6 * 1024 * 1024,
-        // The whole point. Without this Uppy does not remember an interrupted
-        // upload, and re-adding the same folder starts from zero.
-        storeFingerprintForResuming: true,
-        removeFingerprintOnSuccess: true,
-        retryDelays: [0, 1000, 3000, 5000, 10_000],
-      }),
-    [],
-  );
 
   const flashSaved = () => {
     setSavedFlash(true);
@@ -168,9 +113,9 @@ export default function GalleryEditor({
    * Creates the gallery, or writes the changed details to the one that exists.
    *
    * Returns the slug, or null if nothing was saved -- the caller needs to know,
-   * because dropping photos in waits on this. Concurrent callers (she presses
-   * save exactly as the first file lands) share one request rather than racing
-   * to create two galleries.
+   * because dropping photos into an empty screen waits on this. Concurrent
+   * callers (a debounced autosave landing exactly as she drops a folder) share
+   * one request rather than racing to create two galleries.
    */
   const inFlight = useRef<Promise<string | null> | null>(null);
 
@@ -221,8 +166,7 @@ export default function GalleryEditor({
         flashSaved();
 
         // From here on this *is* the gallery's own page, so a refresh reopens it
-        // rather than offering a blank form -- and the password cookie, scoped to
-        // this path, is sent when it does.
+        // rather than offering a blank form.
         if (!gallery) window.history.replaceState(null, '', saved.path);
 
         return saved.slug;
@@ -241,32 +185,6 @@ export default function GalleryEditor({
       inFlight.current = null;
     }
   }, [clientName, shootDate, expiryDays, gallery]);
-
-  /**
-   * Starts (or resumes) the transfer, creating the gallery first if needed.
-   *
-   * Called when files are dropped, and again by the "wyślij zdjęcia" button when
-   * the first attempt was held back for want of a client name.
-   */
-  const startUpload = useCallback(async () => {
-    // An existing gallery already has a slug, so photos attach to it without
-    // touching the details -- dropping a folder in should not feel like pressing
-    // save. Only the empty screen has to create something first, and there that
-    // *is* what dropping photos means.
-    const slug = gallery ? gallery.slug : await save();
-    if (!slug) {
-      setHeld(true);
-      return;
-    }
-    setHeld(false);
-    uppy.setMeta({ slug });
-    try {
-      await uppy.upload();
-    } catch {
-      // Per-file failures arrive through upload-error; this only catches a
-      // refusal to start at all, which the dashboard already shows.
-    }
-  }, [save, gallery, uppy]);
 
   /**
    * Saving a gallery that already exists is not something she should have to
@@ -301,78 +219,6 @@ export default function GalleryEditor({
     void save();
   };
 
-  // Uppy's listeners are attached once, so they must not close over state that
-  // changes. They call through these refs instead -- an earlier version
-  // re-subscribed on every render and stacked up duplicate handlers.
-  const startUploadRef = useRef(startUpload);
-  const uploadingRef = useRef(uploading);
-  useEffect(() => {
-    startUploadRef.current = startUpload;
-    uploadingRef.current = uploading;
-  });
-
-  useEffect(() => {
-    if (!dashboardRef.current) return;
-
-    uppy.use(Dashboard, {
-      target: dashboardRef.current,
-      inline: true,
-      height: 420,
-      proudlyDisplayPoweredByUppy: false,
-      note: 'Przeciągnij tutaj cały folder ze zdjęciami. JPG i PNG.',
-      showRemoveButtonAfterComplete: false,
-      // Uppy's own upload button would start a transfer without going through
-      // startUpload(), which is where the gallery gets created and the slug
-      // attached -- so those files would arrive with nothing to belong to and be
-      // dropped by the tus hook. Adding files is the only trigger there is.
-      hideUploadButton: true,
-    });
-
-    return () => {
-      const plugin = uppy.getPlugin('Dashboard');
-      if (plugin) uppy.removePlugin(plugin);
-    };
-  }, [uppy]);
-
-  useEffect(() => {
-    const onFilesAdded = () => {
-      void startUploadRef.current();
-    };
-    const onUploadStart = () => setUploading(true);
-    const onSuccess = () => setSent((count) => count + 1);
-    const onError = (file?: { name?: string }) => {
-      setFailed((names) => [...names, file?.name ?? 'plik']);
-    };
-    const onComplete = () => setUploading(false);
-
-    uppy.on('files-added', onFilesAdded);
-    uppy.on('upload', onUploadStart);
-    uppy.on('upload-success', onSuccess);
-    uppy.on('upload-error', onError);
-    uppy.on('complete', onComplete);
-
-    return () => {
-      uppy.off('files-added', onFilesAdded);
-      uppy.off('upload', onUploadStart);
-      uppy.off('upload-success', onSuccess);
-      uppy.off('upload-error', onError);
-      uppy.off('complete', onComplete);
-    };
-  }, [uppy]);
-
-  // Nothing transfers while the tab is closed. Closing at 80% pauses the
-  // upload rather than destroying it, but she has no way to know that, so
-  // the browser's own warning is the honest place to say "not yet".
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => {
-      if (!uploadingRef.current) return;
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, []);
-
   // Several of these are open at once when she is catching up on a backlog,
   // and "Nowa galeria" five times over is no help in a row of tabs.
   //
@@ -397,24 +243,21 @@ export default function GalleryEditor({
   );
 
   /**
-   * The link, and only the link.
-   *
-   * There was a "copy link and password" button too, and it was the wrong
-   * default: it puts the key in the same message as the door. She sends the
-   * link one way and reads the password out, or sends it separately -- which is
-   * what a password on a gallery is for. The password is on screen to be copied
-   * by hand when she wants it.
+   * The link and the code copy separately, never together: one message with
+   * both in it puts the key beside the door, and keeping them apart is the
+   * entire reason the gallery has a password.
    */
-  const copyLink = async () => {
-    if (!gallery) return;
+  const copy = async (what: 'link' | 'password') => {
+    const text = what === 'link' ? gallery?.shareUrl : password;
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(gallery.shareUrl);
-      setCopied(true);
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
       if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopied(false), 2500);
+      copyTimer.current = setTimeout(() => setCopied(null), 2500);
     } catch {
-      // Clipboard access can be refused; the link is on screen to be read.
-      setCopied(false);
+      // Clipboard access can be refused; both values are on screen to be read.
+      setCopied(null);
     }
   };
 
@@ -453,6 +296,50 @@ export default function GalleryEditor({
           Termin tej galerii już minął — klient jej nie otworzy. Wybierz niżej
           nowy termin i zapisz, żeby znów była dostępna. Zdjęcia kasują się przy
           nocnym porządkowaniu, więc zrób to jak najszybciej.
+        </p>
+      )}
+
+      {gallery ? (
+        /* What she came for, at the top: two columns, each copied on its own. */
+        <section className="finish">
+          <div className="finish-part">
+            <p className="finish-label">Link dla klienta</p>
+            <p className="finish-link">{gallery.shareUrl}</p>
+            <button type="button" onClick={() => copy('link')}>
+              {copied === 'link' ? 'Skopiowane ✓' : 'Kopiuj link'}
+            </button>
+          </div>
+
+          <div className="finish-part">
+            <p className="finish-label">Hasło</p>
+            {password ? (
+              <>
+                <p className="finish-password">{password}</p>
+                <button type="button" onClick={() => copy('password')}>
+                  {copied === 'password' ? 'Skopiowane ✓' : 'Kopiuj hasło'}
+                </button>
+              </>
+            ) : (
+              /* A plain form, not a button with JavaScript behind it, so it works
+                 even if this island never hydrates. The page it posts to
+                 redirects back here with the new password. */
+              <form className="repass" method="POST">
+                <p>
+                  Tej galerii nie da się już odczytać hasła — powstała, zanim panel
+                  zaczął je zapamiętywać. Ustaw nowe i wyślij je klientowi; stare
+                  przestanie wtedy działać.
+                </p>
+                <button type="submit" name="intent" value="new-password">
+                  Ustaw nowe hasło
+                </button>
+              </form>
+            )}
+          </div>
+        </section>
+      ) : (
+        <p className="hint">
+          Link dla klienta i hasło pojawią się tutaj, gdy zapiszesz galerię albo
+          przeciągniesz pierwsze zdjęcia.
         </p>
       )}
 
@@ -557,104 +444,12 @@ export default function GalleryEditor({
         </p>
       </section>
 
-      {gallery ? (
-        <section className="finish">
-          <p className="finish-label">Link dla klienta</p>
-          <p className="finish-link">{gallery.shareUrl}</p>
-
-          {password ? (
-            <>
-              <p className="finish-label">Hasło</p>
-              <p className="finish-password">{password}</p>
-            </>
-          ) : (
-            /* A plain form, not a button with JavaScript behind it, so it works
-               even if this island never hydrates. The page it posts to redirects
-               back here with the new password. */
-            <form className="repass" method="POST">
-              <p>
-                Tej galerii nie da się już odczytać hasła — powstała, zanim panel
-                zaczął je zapamiętywać. Ustaw nowe i wyślij je klientowi; stare
-                przestanie wtedy działać.
-              </p>
-              <button type="submit" name="intent" value="new-password">
-                Ustaw nowe hasło
-              </button>
-            </form>
-          )}
-
-          <div className="finish-actions">
-            <button type="button" onClick={copyLink}>
-              {copied ? 'Skopiowane ✓' : 'Kopiuj link'}
-            </button>
-          </div>
-
-          <p className="finish-note">
-            {STATUS_NOTE[gallery.status] ?? 'Link działa od razu.'}
-            {/* "W galerii: 3 zdjęcia" rather than "jest/są", which would have to
-                agree with the count as well as the noun. */}
-            {gallery.photoCount > 0 && ` W galerii: ${photoCount(gallery.photoCount)}.`}
-          </p>
+      {withUploader && (
+        <section className="card">
+          <h2 className="card-title">Zdjęcia</h2>
+          <PhotoUploader slug={gallery?.slug ?? null} ensureGallery={save} variant="panel" />
         </section>
-      ) : (
-        <p className="hint">
-          Link dla klienta i hasło pojawią się tutaj, gdy zapiszesz galerię albo
-          przeciągniesz pierwsze zdjęcia.
-        </p>
       )}
-
-      <section className="card">
-        <h2 className="card-title">Zdjęcia</h2>
-
-        {held && (
-          <div className="errors" role="alert">
-            {/* Usually because the gallery has no name yet -- and then the
-                message under the details says which field, and the cursor is
-                already in it. Worded to hold for the other reason too: a save
-                that could not reach the server. */}
-            <p>
-              Zdjęcia czekają. Uzupełnij dane sesji powyżej, a potem naciśnij
-              „Wyślij zdjęcia”.
-            </p>
-            <button type="button" onClick={() => void startUpload()}>
-              Wyślij zdjęcia
-            </button>
-          </div>
-        )}
-
-        <div ref={dashboardRef} />
-
-        {sent > 0 && (
-          <p className="status" role="status">
-            Wysłano {sent} {sent === 1 ? 'zdjęcie' : 'zdjęć'}.
-          </p>
-        )}
-
-        {failed.length > 0 && (
-          <div className="errors" role="alert">
-            <p>
-              Nie udało się wysłać {failed.length}{' '}
-              {failed.length === 1 ? 'pliku' : 'plików'}. Możesz przeciągnąć te
-              same pliki jeszcze raz — wysyłanie ruszy od miejsca, w którym się
-              zatrzymało.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setFailed([]);
-                void uppy.retryAll();
-              }}
-            >
-              Spróbuj ponownie
-            </button>
-          </div>
-        )}
-
-        <p className="hint">
-          Nie zamykaj tej karty w trakcie wysyłania. Jeśli komputer uśpi ekran,
-          wysyłanie się zatrzyma i ruszy dalej, gdy go obudzisz.
-        </p>
-      </section>
     </div>
   );
 }

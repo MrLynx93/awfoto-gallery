@@ -35,5 +35,6 @@ if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
     password={null}
     expiryChoices={EXPIRY_CHOICES}
     defaultExpiryDays={DEFAULT_EXPIRY_DAYS}
+    withUploader={true}
   />
 </BaseLayout>

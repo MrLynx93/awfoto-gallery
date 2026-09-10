@@ -79,12 +79,11 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                 column "Klient" made the second one sound like a different
                 thing entirely. */}
             <th>Sesja</th>
-            {/* The two the phone drops: on a small screen the row has to answer
-                "which session, how big, how long left" and nothing else. The
-                date and the password are both one tap away on the gallery. */}
+            {/* The phone drops the date: at that width the row has to answer
+                "which session, how big, how long left" and nothing else, and the
+                date is one tap away on the gallery. */}
             <th class="summary" />
             <th class="col-date">Data</th>
-            <th class="col-pass">Hasło</th>
             <th>Zdjęcia</th>
             <th>Rozmiar</th>
             <th>Wygasa</th>
@@ -115,10 +114,6 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                   : `Wygasa za ${dayCount(daysUntil(gallery.expiresAt))}.`}
               </td>
               <td class="muted col-date">{gallery.shootDate ?? '—'}</td>
-              {/* Readable again from the row (server/passwords.js), so "what
-                  was the password?" is answered by the list itself. Galleries
-                  from before that column show a dash. */}
-              <td class="pass col-pass">{gallery.password ?? '—'}</td>
               <td class="num col-count">{gallery.photoCount}</td>
               <td class="num col-size">{megabytes(gallery.bytesTotal)}</td>
               <td class={`col-expiry ${gallery.expired ? 'expired' : ''}`}>
@@ -228,7 +223,6 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
   td .quiet svg { display: none; }
   td a:hover { color: var(--glina-ciemna); }
   .num { font-variant-numeric: tabular-nums; }
-  .pass { letter-spacing: 0.14em; color: var(--glina-ciemna); white-space: nowrap; }
   .right { text-align: right; white-space: nowrap; }
   /* `td a` above it is two elements' worth of specificity, so a bare .quiet
      lost to it and these links kept the client link's underline. */
@@ -297,7 +291,7 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
     }
 
     td { display: block; padding: 0; border: 0; }
-    .col-date, .col-pass, .col-count, .col-size, .col-expiry { display: none; }
+    .col-date, .col-count, .col-size, .col-expiry { display: none; }
 
     td:first-child { grid-column: 1; font-size: 1.02rem; }
     td:first-child a { border-bottom: 0; }

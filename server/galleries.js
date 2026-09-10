@@ -205,7 +205,6 @@ export async function markReady(slug, { photoCount, bytesTotal, status = 'ready'
  * @property {string} expiresAt
  * @property {string} createdAt
  * @property {boolean} expired
- * @property {string|null} password
  */
 
 /**
@@ -217,7 +216,6 @@ export async function list() {
   const [rows] = await db().query(
     `SELECT slug, client_name AS clientName, shoot_date AS shootDate, status,
             photo_count AS photoCount, bytes_total AS bytesTotal,
-            password_enc AS passwordEnc,
             expires_at AS expiresAt, created_at AS createdAt,
             (expires_at < NOW()) AS expired
        FROM galleries
@@ -227,13 +225,9 @@ export async function list() {
   // MySQL returns a boolean expression as 1/0; the templates want a boolean.
   // The password is unsealed here rather than in the template: the dashboard
   // shows every gallery's code at a glance, which is the point of it.
-  // The ciphertext itself does not leave this function -- the dashboard wants
-  // the code, and nothing downstream has any use for the sealed form.
-  return rows.map(({ passwordEnc, ...row }) => ({
-    ...row,
-    expired: Boolean(row.expired),
-    password: readPassword({ passwordEnc }),
-  }));
+  // No password here: the list does not show one, and a code nobody displays is
+  // a code better left sealed. The gallery's own page unseals its own.
+  return rows.map((row) => ({ ...row, expired: Boolean(row.expired) }));
 }
 
 /** What the disk budget is measured against. */
