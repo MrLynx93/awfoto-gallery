@@ -136,7 +136,16 @@ const { crumbs = [] } = Astro.props;
     color: var(--tekst);
   }
 
+  /* The trail goes on a phone. It is a wayfinding aid for a wide screen, and
+     at this width it either wraps under the mark or squeezes it -- while the
+     way back it offers is the same one the mark itself already is, since the
+     wordmark links to the list. Same breakpoint as the galleries table, so the
+     whole panel changes shape at one width rather than two. */
   @media (max-width: 700px) {
+    .crumbs {
+      display: none;
+    }
+
     .wordmark {
       font-size: 1rem;
       letter-spacing: 0.2em;
