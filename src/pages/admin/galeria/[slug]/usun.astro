@@ -114,19 +114,33 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.2rem; }
 
   /* The destructive button is the one that looks unlike every other button in
-     the panel; "wróć do listy" is deliberately the quiet, easy one. */
+     the panel: filled, and in a colour used nowhere else. */
   .danger {
     font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
-    text-transform: uppercase; padding: 1em 1.8em; border: 0; border-radius: 3px;
+    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
+    /* Transparent rather than none: the outlined button beside it has a real
+       1px border, and without this the filled one is two pixels shorter. */
+    border: 1px solid transparent;
     background: #9c3b28; color: var(--biel); cursor: pointer;
+    /* Stated on both, so the <button> and the <a> next to it come out the same
+       height: a button's default line-height is `normal`, an anchor inherits
+       the body's 1.75, and the two sat six pixels apart. */
+    line-height: 1.2;
     transition: background 0.25s;
   }
   .danger:hover { background: #7d2f20; }
+  /* A button too, not a passing link: it sits next to the destructive one and
+     is the choice most likely to be wanted, so it has to look like something to
+     press. Outlined rather than filled, so the two are still told apart at a
+     glance. */
   .cancel {
-    font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--tekst-jasny); text-decoration: none;
+    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
+    border: 1px solid var(--taupe); background: transparent;
+    color: var(--tekst); text-decoration: none; line-height: 1.2;
+    transition: background 0.25s, border-color 0.25s;
   }
-  .cancel:hover { color: var(--glina-ciemna); }
+  .cancel:hover { background: var(--piaskowy); border-color: var(--piaskowy); }
 
   .note { margin-top: 2.5rem; font-size: 0.85rem; color: var(--tekst-jasny); }
 </style>
