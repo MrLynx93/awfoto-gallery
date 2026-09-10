@@ -18,7 +18,7 @@ export const EXPIRY_CHOICES = [
 
 export const DEFAULT_EXPIRY_DAYS = 30;
 
-/** client_name is VARCHAR(120); truncating silently would rename a client. */
+/** client_name is VARCHAR(120); truncating silently would rename a session. */
 const NAME_LIMIT = 120;
 
 const ALLOWED_DAYS = new Set(EXPIRY_CHOICES.map((choice) => choice.days));
@@ -42,10 +42,10 @@ export function readGalleryDetails(body, { requireName = true } = {}) {
   if (body.clientName !== undefined || requireName) {
     const clientName = String(body.clientName ?? '').trim();
     if (!clientName) {
-      return { error: 'Wpisz imię klienta — będzie widoczne na stronie ze zdjęciami.' };
+      return { error: 'Wpisz nazwę sesji — będzie widoczna na stronie ze zdjęciami.' };
     }
     if (clientName.length > NAME_LIMIT) {
-      return { error: `Imię klienta jest za długie (najwyżej ${NAME_LIMIT} znaków).` };
+      return { error: `Nazwa sesji jest za długa (najwyżej ${NAME_LIMIT} znaków).` };
     }
     values.clientName = clientName;
   }

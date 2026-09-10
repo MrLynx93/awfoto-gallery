@@ -124,7 +124,7 @@ export default function GalleryEditor({
 
     const name = clientName.trim();
     if (!name) {
-      setFormError('Wpisz imię klienta — będzie widoczne na stronie ze zdjęciami.');
+      setFormError('Wpisz nazwę sesji — będzie widoczna na stronie ze zdjęciami.');
       nameInput.current?.focus();
       return null;
     }
@@ -357,7 +357,7 @@ export default function GalleryEditor({
           }}
         >
           <label>
-            <span>Imię klienta</span>
+            <span>Sesja</span>
             <input
               ref={nameInput}
               name="clientName"
