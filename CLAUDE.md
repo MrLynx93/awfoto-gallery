@@ -252,6 +252,19 @@ One screen. Nothing else on it.
   finish line; make it unmistakable that she is done.
 - Errors in plain Polish with a retry button. Never surface a stack trace.
 
+The same screen is also the edit screen. `/admin/galeria` opens it empty;
+`/admin/galeria/<slug>`, reached from the dashboard's "Edytuj", opens it on a
+gallery that already exists — details filled in, link and password above the
+drop zone, more photos welcome. There is no separate edit form, and no second
+gallery for the client she says she forgot a few photos for.
+
+Nothing is created by opening the page. The row appears at the first moment
+there is something to create — she saves, or she drops a folder in — which is
+what lets the details and the drop zone share one screen: the upload needs a
+gallery to attach to and gets one just in time, without a wizard step to walk
+through first. Saving after that never reloads the page, because a reload
+would empty the queue mid-upload.
+
 ### Resumability — get this right
 
 tus means **no progress is lost**, but it does **not** mean background upload. Nothing

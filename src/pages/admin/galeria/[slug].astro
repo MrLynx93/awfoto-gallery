@@ -1,0 +1,79 @@
+---
+/**
+ * An existing gallery, on the same screen that created it.
+ *
+ * Reached from the dashboard's "Edytuj" link, and also by the editor itself:
+ * after it creates a gallery it rewrites the address bar to this URL, so a
+ * refresh mid-upload lands here. That is the resume path -- come back to this
+ * page, drag the same folder in, and Uppy's fingerprints continue the transfer
+ * where it stopped rather than starting it again.
+ *
+ * The password is the awkward part. Only its scrypt hash is stored, so it
+ * cannot be recovered here; it arrives in a signed, httpOnly cookie set when
+ * the gallery was created. When that cookie is gone -- another browser, a few
+ * days later -- the screen still works, and offers a new password instead of
+ * pretending the old one can be dug out.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import GalleryEditor from '../../../components/GalleryEditor.tsx';
+import { findBySlug, setPassword } from '../../../../server/galleries.js';
+import { describeGallery } from '../../../../server/gallery-view.js';
+import { EXPIRY_CHOICES, DEFAULT_EXPIRY_DAYS } from '../../../../server/gallery-form.js';
+import { generatePassword } from '../../../../server/passwords.js';
+import {
+  ADMIN_COOKIE,
+  isAdmin,
+  cookieOptions,
+  issueNewGalleryPassword,
+  readNewGalleryPassword,
+  newGalleryCookieName,
+  newGalleryCookiePath,
+  GALLERY_TTL,
+} from '../../../../server/sessions.js';
+import '../../../styles/editor.css';
+
+if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
+  return Astro.redirect('/admin/login');
+}
+
+const { slug } = Astro.params;
+const row = await findBySlug(slug);
+
+// Back to the dashboard rather than an error page: from here, a slug that does
+// not exist means a stale bookmark or a gallery the nightly sweep has taken,
+// and the list of what *does* exist is the useful answer to both.
+if (!row) {
+  return Astro.redirect('/admin');
+}
+
+// The one thing on this screen that is still a form POST rather than a fetch:
+// it has to keep working if the island never hydrates, since a gallery whose
+// password is lost is a gallery nobody can open. Post/Redirect/Get, so that
+// refreshing does not mint a third password after she has copied the second.
+if (Astro.request.method === 'POST') {
+  const password = generatePassword();
+  await setPassword(slug, password);
+  Astro.cookies.set(
+    newGalleryCookieName(slug),
+    issueNewGalleryPassword(slug, password),
+    cookieOptions(GALLERY_TTL, newGalleryCookiePath(slug)),
+  );
+  return Astro.redirect(newGalleryCookiePath(slug), 303);
+}
+
+const gallery = describeGallery(row);
+const password = readNewGalleryPassword(
+  Astro.cookies.get(newGalleryCookieName(slug))?.value,
+  slug,
+);
+---
+
+<BaseLayout title={gallery.clientName} wide={true}>
+  <GalleryEditor
+    client:load
+    gallery={gallery}
+    password={password}
+    expiryChoices={EXPIRY_CHOICES}
+    defaultExpiryDays={DEFAULT_EXPIRY_DAYS}
+  />
+</BaseLayout>

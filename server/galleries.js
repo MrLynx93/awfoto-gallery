@@ -66,6 +66,46 @@ export async function create({ clientName, shootDate, password, expiryDays = 30 
   throw new Error('Could not allocate a unique slug after 5 attempts');
 }
 
+/**
+ * Changes a gallery's details after the fact, from the same screen that created
+ * it. Only the fields actually passed are written.
+ *
+ * The expiry is the one that has to be partial. `expires_at` is an absolute
+ * moment, and the only thing stored -- the dropdown she chose from is not kept
+ * -- so there is no way to re-apply "30 days" without deciding what it counts
+ * from. So the editor leaves the key out unless she actually picked a new
+ * term, and a new term counts from now: "this gallery disappears in 30 days",
+ * which is the question she is answering when she touches that control.
+ */
+export async function update(slug, { clientName, shootDate, expiryDays } = {}) {
+  const assignments = [];
+  const params = { slug };
+
+  if (clientName !== undefined) {
+    assignments.push('client_name = :clientName');
+    params.clientName = clientName;
+  }
+  if (shootDate !== undefined) {
+    assignments.push('shoot_date = :shootDate');
+    params.shootDate = shootDate || null;
+  }
+  if (expiryDays !== undefined) {
+    assignments.push('expires_at = DATE_ADD(NOW(), INTERVAL :expiryDays DAY)');
+    params.expiryDays = expiryDays;
+  }
+
+  if (assignments.length === 0) return;
+
+  // `deleted_at IS NULL` for the same reason every read carries it: a gallery
+  // the nightly sweep has condemned must not come back to life because this
+  // screen was still open in a tab.
+  await db().query(
+    `UPDATE galleries SET ${assignments.join(', ')}
+      WHERE slug = :slug AND deleted_at IS NULL`,
+    params,
+  );
+}
+
 /** Called as each upload lands, so the worker can tell when they have stopped. */
 export async function touchUpload(slug) {
   await db().query(

@@ -10,6 +10,8 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { list, totalBytes } from '../../../server/galleries.js';
+import { daysUntil } from '../../../server/gallery-form.js';
+import { galleryEditPath } from '../../../server/paths.js';
 import { diskBudgetBytes } from '../../../server/config.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../server/sessions.js';
 
@@ -23,9 +25,6 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
 
 const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
 
-const daysLeft = (expiresAt) =>
-  Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
-
 const STATUS_LABEL = {
   preparing: 'przygotowuję',
   ready: 'gotowa',
@@ -37,7 +36,7 @@ const STATUS_LABEL = {
 <BaseLayout title="Panel" wide={true}>
   <header class="head">
     <h1>Galerie</h1>
-    <a class="cta" href="/admin/nowa">Nowa galeria</a>
+    <a class="cta" href="/admin/galeria">Nowa galeria</a>
   </header>
 
   <section class="disk" aria-label="Wykorzystanie dysku">
@@ -84,7 +83,7 @@ const STATUS_LABEL = {
               <td class="num">{gallery.photoCount}</td>
               <td class="num">{gb(gallery.bytesTotal)} GB</td>
               <td class={gallery.expired ? 'expired' : ''}>
-                {gallery.expired ? 'wygasła' : `za ${daysLeft(gallery.expiresAt)} dni`}
+                {gallery.expired ? 'wygasła' : `za ${daysUntil(gallery.expiresAt)} dni`}
               </td>
               <td>
                 <span class="status" data-status={gallery.status}>
@@ -92,12 +91,18 @@ const STATUS_LABEL = {
                 </span>
               </td>
               <td class="right">
-                {/* Adding photos to a session that already exists needs an
+                {/* Going back into a session that already exists needs an
                     obvious door, or the only one on this screen is "Nowa
                     galeria" -- and a second gallery for the same client is not
-                    what she means by "I forgot a few". */}
-                <a class="quiet" href={`/admin/wyslij/${gallery.slug}`}>
-                  Wyślij zdjęcia
+                    what she means by "I forgot a few photos". This opens the
+                    same screen the gallery was made on: the name, the date, the
+                    term, and the drop zone. */}
+                <a
+                  class="quiet"
+                  href={galleryEditPath(gallery.slug)}
+                  title="Zmień dane galerii albo dodaj zdjęcia"
+                >
+                  Edytuj
                 </a>
               </td>
             </tr>

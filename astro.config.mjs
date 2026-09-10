@@ -19,6 +19,20 @@ export default defineConfig({
   trailingSlash: 'never',
 
   /**
+   * The two-page upload wizard's URLs, kept alive as redirects.
+   *
+   * /admin/nowa named the session and /admin/wyslij/<slug> took the photos;
+   * both are now one editor at /admin/galeria. The second of those is the URL
+   * she is told to come back to in order to resume an interrupted upload, so it
+   * is plausibly in a browser's history or on a sticky note, and landing on the
+   * right screen costs two lines here.
+   */
+  redirects: {
+    '/admin/nowa': { status: 301, destination: '/admin/galeria' },
+    '/admin/wyslij/[slug]': { status: 301, destination: '/admin/galeria/[slug]' },
+  },
+
+  /**
    * Astro's own origin check is off, and replaced by one in app.js.
    *
    * Not a relaxation -- a correction. Astro compares the browser's Origin

@@ -1,0 +1,303 @@
+/*
+ * The gallery editor.
+ *
+ * A plain stylesheet rather than a scoped <style> block, because the screen it
+ * dresses is a React island: Astro's scoping attribute is added to markup it
+ * renders itself, and nothing inside GalleryEditor would match. Importing it
+ * from both the new-gallery and the edit page keeps one copy of these rules
+ * instead of two `is:global` blocks that drift.
+ */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.editor-head h1 {
+  margin: 0;
+}
+
+.back {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tekst-jasny);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--glina-ciemna);
+}
+
+/* Past its term: the client sees the expiry page, so this is the one thing on
+   the screen she has to act on. */
+.warn {
+  background: #f7ece6;
+  border: 1px solid var(--taupe);
+  border-radius: 4px;
+  padding: 1rem 1.2rem;
+  margin: 0;
+  color: var(--glina-ciemna);
+}
+
+.card {
+  background: var(--biel);
+  border: 1px solid var(--piaskowy);
+  border-radius: 4px;
+  padding: clamp(1.3rem, 4vw, 2rem);
+}
+
+.card-title {
+  font-size: 0.72rem;
+  font-family: var(--body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tekst-jasny);
+  margin: 0 0 1.4rem;
+}
+
+.card-note {
+  margin: 1.6rem 0 0;
+  font-size: 0.85rem;
+  color: var(--tekst-jasny);
+}
+
+/* Three short fields. Side by side where there is room, stacked on a phone. */
+.details {
+  display: grid;
+  gap: 1.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  align-items: end;
+}
+
+.details label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.details label span {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tekst-jasny);
+}
+
+.details input,
+.details select {
+  font-family: var(--body);
+  font-size: 1.05rem;
+  padding: 0.7em 0.8em;
+  border: 1px solid var(--taupe);
+  border-radius: 3px;
+  background: var(--biel);
+  color: var(--tekst);
+  width: 100%;
+}
+
+.details input:focus-visible,
+.details select:focus-visible {
+  outline: 2px solid var(--glina);
+  outline-offset: 2px;
+  border-color: transparent;
+}
+
+.details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  /* Always on its own row, whatever the fields do above it. */
+  grid-column: 1 / -1;
+}
+
+.details-actions button {
+  font-family: var(--body);
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 1em 1.8em;
+  border: 0;
+  border-radius: 3px;
+  background: var(--glina);
+  color: var(--biel);
+  cursor: pointer;
+  transition: background 0.25s;
+}
+
+.details-actions button:hover:not(:disabled) {
+  background: var(--glina-ciemna);
+}
+
+.details-actions button:disabled {
+  background: var(--piaskowy);
+  color: var(--tekst-jasny);
+  cursor: default;
+}
+
+.details-state {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--tekst-jasny);
+}
+
+/* The finish line. She has just spent an hour on this screen; the link and the
+   password are the only things that matter at the end of it, so they get the
+   weight rather than the drop zone that is now empty. */
+.finish {
+  background: var(--bez);
+  border: 1px solid var(--piaskowy);
+  border-radius: 4px;
+  padding: clamp(1.5rem, 4vw, 2.2rem);
+}
+
+.finish-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tekst-jasny);
+  margin: 0 0 0.3rem;
+}
+
+.finish-link {
+  font-size: 1.05rem;
+  margin: 0 0 1.4rem;
+  word-break: break-all;
+  color: var(--tekst);
+}
+
+.finish-password {
+  font-family: var(--body);
+  font-size: 2rem;
+  letter-spacing: 0.3em;
+  margin: 0 0 1.6rem;
+  color: var(--glina-ciemna);
+}
+
+.finish-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.finish-actions button {
+  font-family: var(--body);
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 1em 1.8em;
+  border: 0;
+  border-radius: 3px;
+  background: var(--glina);
+  color: var(--biel);
+  cursor: pointer;
+  transition: background 0.25s;
+}
+
+.finish-actions button:hover {
+  background: var(--glina-ciemna);
+}
+
+.finish-actions .ghost {
+  background: transparent;
+  color: var(--glina-ciemna);
+  border: 1px solid var(--taupe);
+}
+
+.finish-actions .ghost:hover {
+  background: var(--piaskowy);
+  color: var(--tekst);
+}
+
+.finish-note {
+  margin: 1.4rem 0 0;
+  font-size: 0.85rem;
+  color: var(--tekst-jasny);
+}
+
+/* Shown only when the password could not be carried here. It is a form, not a
+   button with JavaScript behind it, so it works even if the island never
+   hydrates. */
+.repass {
+  margin: 0 0 1.4rem;
+}
+
+.repass p {
+  margin: 0 0 0.9rem;
+  font-size: 0.9rem;
+  color: var(--tekst-jasny);
+}
+
+.repass button {
+  font-family: var(--body);
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 1em 1.8em;
+  border: 0;
+  border-radius: 3px;
+  background: var(--glina);
+  color: var(--biel);
+  cursor: pointer;
+  transition: background 0.25s;
+}
+
+.repass button:hover {
+  background: var(--glina-ciemna);
+}
+
+.status {
+  color: var(--tekst-jasny);
+  font-size: 0.9rem;
+  margin: 1.2rem 0 0;
+}
+
+.errors {
+  background: #f7ece6;
+  border: 1px solid var(--taupe);
+  border-radius: 4px;
+  padding: 1.2rem;
+  margin: 0 0 1.4rem;
+}
+
+.errors p {
+  margin: 0 0 1rem;
+}
+
+.errors button {
+  font-family: var(--body);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.8em 1.4em;
+  border: 0;
+  border-radius: 3px;
+  background: var(--glina);
+  color: var(--biel);
+  cursor: pointer;
+}
+
+.error {
+  color: var(--glina-ciemna);
+  margin: 1.2rem 0 0;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--tekst-jasny);
+  margin: 1.2rem 0 0;
+}
+
+/* Between the details and the drop zone, before there is a link to show. */
+.editor > .hint {
+  margin: 0;
+}

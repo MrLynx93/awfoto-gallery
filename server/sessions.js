@@ -16,6 +16,7 @@
  */
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import { sessionSecret } from './config.js';
+import { galleryEditPath } from './paths.js';
 
 const ADMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GALLERY_TTL_MS = 12 * 60 * 60 * 1000;
@@ -90,7 +91,10 @@ export function cookieOptions(maxAgeMs, path = '/') {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    // Cast so the inferred type is the literal rather than `string`: every
+    // caller passes this object straight to Astro's cookies.set(), which takes
+    // a union of the three legal values.
+    sameSite: /** @type {'lax'} */ ('lax'),
     // Set-Cookie counts Max-Age in *seconds*; every TTL in this file is in
     // milliseconds, so without the divide the browser is told to keep an admin
     // cookie for eighty years. The signature's own `exp` was still enforcing
@@ -102,20 +106,23 @@ export function cookieOptions(maxAgeMs, path = '/') {
 }
 
 /**
- * Carries a freshly created gallery's password from the POST that made it to
- * the page that displays it.
+ * Carries a freshly created gallery's password past the request that made it.
  *
- * It has to survive a redirect, and it cannot come from the database -- only
- * the scrypt hash is stored, deliberately. So it rides in a signed, httpOnly
- * cookie scoped to that one gallery's page: readable by no script, sent to no
- * other path, and gone within the day. The value is a password the photographer
- * is about to send to a client in a message anyway, and this keeps it out of
- * the URL, where it would sit in browser history.
+ * The editor is handed the plaintext in the response to the request that
+ * created the gallery, so it can show it straight away without a reload. This
+ * cookie is what makes it survive the *next* load of that page -- a refresh, or
+ * coming back after lunch -- which the database cannot, because only the scrypt
+ * hash is stored, deliberately.
+ *
+ * So it rides in a signed, httpOnly cookie scoped to that one gallery's editor:
+ * readable by no script, sent to no other path, and gone within the day. The
+ * value is a password she is about to send to a client in a message anyway, and
+ * this keeps it out of the URL, where it would sit in browser history.
  */
 export const newGalleryCookieName = (slug) => `awf_new_${slug}`;
 
-/** The only path the cookie above is ever sent to. */
-export const newGalleryCookiePath = (slug) => `/admin/wyslij/${slug}`;
+/** The only path the cookie above is ever sent to: the gallery's own editor. */
+export const newGalleryCookiePath = galleryEditPath;
 
 export const issueNewGalleryPassword = (slug, password) =>
   issue({ kind: 'new-gallery', gid: slug, password }, GALLERY_TTL_MS);

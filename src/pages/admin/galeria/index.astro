@@ -1,0 +1,35 @@
+---
+/**
+ * New gallery — the whole thing on one page.
+ *
+ * Details, link, password and drop zone together, rather than the two-step
+ * wizard this replaced. The gallery row itself is created by the editor over
+ * fetch, at the first moment there is something to create: she saves, or she
+ * drops a folder in. Nothing is created by merely opening this page, so a
+ * refresh or a back-then-forward leaves no orphan behind -- which is what the
+ * old first step needed a Post/Redirect/Get dance to achieve.
+ *
+ * Once the gallery exists the editor rewrites the address bar to
+ * /admin/galeria/<slug>, so from then on this tab is that gallery's own page:
+ * a refresh reopens it, with the photos it already has.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import GalleryEditor from '../../../components/GalleryEditor.tsx';
+import { ADMIN_COOKIE, isAdmin } from '../../../../server/sessions.js';
+import { EXPIRY_CHOICES, DEFAULT_EXPIRY_DAYS } from '../../../../server/gallery-form.js';
+import '../../../styles/editor.css';
+
+if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
+  return Astro.redirect('/admin/login');
+}
+---
+
+<BaseLayout title="Nowa galeria" wide={true}>
+  <GalleryEditor
+    client:load
+    gallery={null}
+    password={null}
+    expiryChoices={EXPIRY_CHOICES}
+    defaultExpiryDays={DEFAULT_EXPIRY_DAYS}
+  />
+</BaseLayout>
