@@ -8,7 +8,9 @@ CREATE TABLE galleries (
   -- The public URL segment, and also the directory name under STORAGE_ROOT,
   -- which is why server/storage.js insists on this character set.
   slug          VARCHAR(24)  NOT NULL,
-  client_name   VARCHAR(120) NOT NULL,
+  -- What she calls the session: often a couple, sometimes "Chrzciny Zosi".
+  -- The client's name only when that is what the session is.
+  session_name  VARCHAR(120) NOT NULL,
   shoot_date    DATE         NULL,
   password_hash VARCHAR(255) NOT NULL,
   status        ENUM('preparing', 'ready', 'failed', 'zip_unavailable')

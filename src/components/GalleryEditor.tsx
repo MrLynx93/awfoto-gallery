@@ -24,7 +24,7 @@ import { dayCount } from '../../server/format.js';
 
 export interface GalleryView {
   slug: string;
-  clientName: string;
+  sessionName: string;
   /** 'YYYY-MM-DD', or '' when she never set one. */
   shootDate: string;
   status: string;
@@ -79,7 +79,7 @@ export default function GalleryEditor({
   const [gallery, setGallery] = useState<GalleryView | null>(initialGallery);
   const [password, setPassword] = useState<string | null>(initialPassword);
 
-  const [clientName, setClientName] = useState(initialGallery?.clientName ?? '');
+  const [sessionName, setSessionName] = useState(initialGallery?.sessionName ?? '');
   const [shootDate, setShootDate] = useState(initialGallery?.shootDate ?? '');
   // A new gallery needs a term chosen for it; an existing one already has a
   // date, and touching nothing must not move it.
@@ -99,7 +99,7 @@ export default function GalleryEditor({
 
   const dirty =
     !gallery ||
-    clientName !== gallery.clientName ||
+    sessionName !== gallery.sessionName ||
     shootDate !== gallery.shootDate ||
     expiryDays !== UNCHANGED;
 
@@ -122,7 +122,7 @@ export default function GalleryEditor({
   const save = useCallback(async (): Promise<string | null> => {
     if (inFlight.current) return inFlight.current;
 
-    const name = clientName.trim();
+    const name = sessionName.trim();
     if (!name) {
       setFormError('Wpisz nazwę sesji — będzie widoczna na stronie ze zdjęciami.');
       nameInput.current?.focus();
@@ -133,7 +133,7 @@ export default function GalleryEditor({
       setSaving(true);
       setFormError(null);
       try {
-        const body: Record<string, unknown> = { clientName: name, shootDate };
+        const body: Record<string, unknown> = { sessionName: name, shootDate };
         // Absent means "leave it": the server cannot tell "30 days" applied to a
         // gallery created three weeks ago from a deliberate new term.
         if (expiryDays !== UNCHANGED) body.expiryDays = Number(expiryDays);
@@ -159,7 +159,7 @@ export default function GalleryEditor({
 
         const saved: GalleryView = data.gallery;
         setGallery(saved);
-        setClientName(saved.clientName);
+        setSessionName(saved.sessionName);
         setShootDate(saved.shootDate);
         setExpiryDays(UNCHANGED);
         if (data.password) setPassword(data.password);
@@ -184,7 +184,7 @@ export default function GalleryEditor({
     } finally {
       inFlight.current = null;
     }
-  }, [clientName, shootDate, expiryDays, gallery]);
+  }, [sessionName, shootDate, expiryDays, gallery]);
 
   /**
    * Saving a gallery that already exists is not something she should have to
@@ -204,13 +204,13 @@ export default function GalleryEditor({
     if (!gallery || !dirty || saving) return;
     // An empty name is not a save, it is a field she is in the middle of
     // clearing. The blur handler surfaces the error if she leaves it that way.
-    if (!clientName.trim()) return;
+    if (!sessionName.trim()) return;
 
     autosaveTimer.current = setTimeout(() => void save(), 800);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [gallery, dirty, saving, clientName, save]);
+  }, [gallery, dirty, saving, sessionName, save]);
 
   /** Leaving a field is a decision; it does not wait out the timer. */
   const saveNow = () => {
@@ -228,10 +228,10 @@ export default function GalleryEditor({
   // either one.
   useEffect(() => {
     if (!gallery) return;
-    document.title = `${gallery.clientName} — AW Fotografia`;
+    document.title = `${gallery.sessionName} — AW Fotografia`;
     const crumb = document.querySelector('[data-crumb-current]');
-    if (crumb) crumb.textContent = gallery.clientName;
-  }, [gallery?.clientName]);
+    if (crumb) crumb.textContent = gallery.sessionName;
+  }, [gallery?.sessionName]);
 
   useEffect(
     () => () => {
@@ -269,7 +269,7 @@ export default function GalleryEditor({
           able to go away the moment she gives the gallery a new term. The way
           back to the list is the breadcrumb in the header. */}
       <header className="editor-head">
-        <h1>{gallery ? gallery.clientName : 'Nowa galeria'}</h1>
+        <h1>{gallery ? gallery.sessionName : 'Nowa galeria'}</h1>
         {gallery && deletePath && (
           /* A real link, so it works before this island hydrates and without
              JavaScript at all -- it leads to the page that asks the same
@@ -360,13 +360,13 @@ export default function GalleryEditor({
             <span>Sesja</span>
             <input
               ref={nameInput}
-              name="clientName"
+              name="sessionName"
               type="text"
               required
               autoFocus={!gallery}
               placeholder="Zuzia i Marek"
-              value={clientName}
-              onChange={(event) => setClientName(event.target.value)}
+              value={sessionName}
+              onChange={(event) => setSessionName(event.target.value)}
               onBlur={saveNow}
             />
           </label>

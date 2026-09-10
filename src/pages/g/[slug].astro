@@ -101,7 +101,7 @@ const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
     link, and the mark is here to say whose photographs these are rather than to
     navigate. It leads to the photographer's site, not to /admin. */}
 <BaseLayout
-  title={gallery?.clientName ?? 'Galeria'}
+  title={gallery?.sessionName ?? 'Galeria'}
   width={authorised ? 'photos' : 'text'}
   crumbs={[]}
   homeHref="https://aw-foto.pl"
@@ -121,7 +121,7 @@ const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
       </section>
     ) : !authorised ? (
       <section class="gate">
-        <h1>{gallery.clientName}</h1>
+        <h1>{gallery.sessionName}</h1>
         {dateLabel && <p class="date">{dateLabel}</p>}
         <p>Wpisz hasło, które otrzymałaś lub otrzymałeś razem z linkiem.</p>
 
@@ -166,7 +166,7 @@ const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
       <>
         <header class="gallery-head">
           <div>
-            <h1>{gallery.clientName}</h1>
+            <h1>{gallery.sessionName}</h1>
             {dateLabel && <p class="date">{dateLabel}</p>}
           </div>
           <a class="download" href={`/g/${slug}/zip`}>

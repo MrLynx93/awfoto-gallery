@@ -369,7 +369,7 @@ Not worth it for something the browser justifies on its own.
 
 One screen. Nothing else on it.
 
-- Client name, shoot date, expiry dropdown (30 days preselected).
+- Session name, shoot date, expiry dropdown (30 days preselected).
 - One large drop zone. She drags the **whole exported Lightroom folder** in — Uppy
   handles directory drops.
 - Per-file progress via the Uppy Dashboard.
@@ -425,7 +425,11 @@ worth the complexity here.
 
 ## Resolved (was: open questions)
 
-- **Database** — MySQL, via `mysql2`.
+- **Database** — MySQL, via `mysql2`. The gallery's name column is
+  `session_name`: what she types is a session — often a couple, sometimes
+  "Chrzciny Zosi" — and only sometimes anybody's name. It was `client_name`
+  until the schema was rewritten in place; there is no migration for the rename,
+  so a database carrying the old column has to be dropped rather than upgraded.
 - **Password storage** — `node:crypto` scrypt, `N=16384, r=8, p=1`, 16-byte salt,
   `timingSafeEqual` on compare. Same helper for the gallery password and the admin
   password.

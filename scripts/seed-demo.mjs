@@ -109,7 +109,7 @@ for (const [index, src] of sources.entries()) {
 // than a bypass, so what is being looked at is what ships.
 const password = generatePassword();
 const { slug } = await create({
-  clientName: 'Zuzia i Marek',
+  sessionName: 'Zuzia i Marek',
   shootDate: '2026-09-19',
   password,
   expiryDays: 30,

@@ -24,7 +24,7 @@ import { dayCount, megabytes } from '../../server/format.js';
 
 interface Props {
   gallery: {
-    clientName: string;
+    sessionName: string;
     shootDate?: string | null;
     photoCount: number;
     bytesTotal: number;
@@ -60,7 +60,7 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
   <dl class="what">
     <div>
       <dt>Sesja</dt>
-      <dd>{gallery.clientName}</dd>
+      <dd>{gallery.sessionName}</dd>
     </div>
     <div>
       <dt>Data sesji</dt>

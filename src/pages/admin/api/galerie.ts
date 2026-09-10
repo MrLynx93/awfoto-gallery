@@ -26,7 +26,7 @@ export const POST: APIRoute = async (context) => {
   const { slug } = await create({
     // readGalleryDetails insists on a name unless told otherwise, so this is
     // present; spelling the arguments out keeps that obvious in both directions.
-    clientName: String(values.clientName),
+    sessionName: String(values.sessionName),
     shootDate: values.shootDate ?? '',
     expiryDays: values.expiryDays ?? DEFAULT_EXPIRY_DAYS,
     password,

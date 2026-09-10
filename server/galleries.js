@@ -32,7 +32,7 @@ function makeSlug(length = 10) {
  */
 export async function findBySlug(slug) {
   const [rows] = await db().query(
-    `SELECT id, slug, client_name AS clientName, shoot_date AS shootDate,
+    `SELECT id, slug, session_name AS sessionName, shoot_date AS shootDate,
             password_hash AS passwordHash, password_enc AS passwordEnc,
             status, photo_count AS photoCount,
             bytes_total AS bytesTotal, last_upload_at AS lastUploadAt,
@@ -44,7 +44,7 @@ export async function findBySlug(slug) {
   return rows[0] ?? null;
 }
 
-export async function create({ clientName, shootDate, password, expiryDays = 30 }) {
+export async function create({ sessionName, shootDate, password, expiryDays = 30 }) {
   const passwordHash = await hash(password);
   // Both, always: the hash decides whether a client gets in, the sealed copy is
   // what the panel shows her afterwards. See server/passwords.js.
@@ -58,10 +58,10 @@ export async function create({ clientName, shootDate, password, expiryDays = 30 
     try {
       const [result] = await db().query(
         `INSERT INTO galleries
-           (slug, client_name, shoot_date, password_hash, password_enc, expires_at)
-         VALUES (:slug, :clientName, :shootDate, :passwordHash, :passwordEnc,
+           (slug, session_name, shoot_date, password_hash, password_enc, expires_at)
+         VALUES (:slug, :sessionName, :shootDate, :passwordHash, :passwordEnc,
                  DATE_ADD(NOW(), INTERVAL :expiryDays DAY))`,
-        { slug, clientName, shootDate: shootDate || null, passwordHash, passwordEnc, expiryDays },
+        { slug, sessionName, shootDate: shootDate || null, passwordHash, passwordEnc, expiryDays },
       );
       return { id: result.insertId, slug };
     } catch (error) {
@@ -82,13 +82,13 @@ export async function create({ clientName, shootDate, password, expiryDays = 30 
  * term, and a new term counts from now: "this gallery disappears in 30 days",
  * which is the question she is answering when she touches that control.
  */
-export async function update(slug, { clientName, shootDate, expiryDays } = {}) {
+export async function update(slug, { sessionName, shootDate, expiryDays } = {}) {
   const assignments = [];
   const params = { slug };
 
-  if (clientName !== undefined) {
-    assignments.push('client_name = :clientName');
-    params.clientName = clientName;
+  if (sessionName !== undefined) {
+    assignments.push('session_name = :sessionName');
+    params.sessionName = sessionName;
   }
   if (shootDate !== undefined) {
     assignments.push('shoot_date = :shootDate');
@@ -193,11 +193,11 @@ export async function markReady(slug, { photoCount, bytesTotal, status = 'ready'
 /**
  * One row as the dashboard uses it. Written out because the templates that
  * consume it are typechecked and mysql2 hands back `any` -- without this every
- * `gallery.clientName` in an .astro file is an implicit-any error.
+ * `gallery.sessionName` in an .astro file is an implicit-any error.
  *
  * @typedef {object} GalleryRow
  * @property {string} slug
- * @property {string} clientName
+ * @property {string} sessionName
  * @property {string|null} shootDate
  * @property {string} status
  * @property {number} photoCount
@@ -214,7 +214,7 @@ export async function markReady(slug, { photoCount, bytesTotal, status = 'ready'
  */
 export async function list() {
   const [rows] = await db().query(
-    `SELECT slug, client_name AS clientName, shoot_date AS shootDate, status,
+    `SELECT slug, session_name AS sessionName, shoot_date AS shootDate, status,
             photo_count AS photoCount, bytes_total AS bytesTotal,
             expires_at AS expiresAt, created_at AS createdAt,
             (expires_at < NOW()) AS expired

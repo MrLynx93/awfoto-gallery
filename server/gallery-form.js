@@ -18,7 +18,7 @@ export const EXPIRY_CHOICES = [
 
 export const DEFAULT_EXPIRY_DAYS = 30;
 
-/** client_name is VARCHAR(120); truncating silently would rename a session. */
+/** session_name is VARCHAR(120); truncating silently would rename a session. */
 const NAME_LIMIT = 120;
 
 const ALLOWED_DAYS = new Set(EXPIRY_CHOICES.map((choice) => choice.days));
@@ -36,18 +36,18 @@ const ALLOWED_DAYS = new Set(EXPIRY_CHOICES.map((choice) => choice.days));
  * @param {{ requireName?: boolean }} options
  */
 export function readGalleryDetails(body, { requireName = true } = {}) {
-  /** @type {{ clientName?: string, shootDate?: string, expiryDays?: number }} */
+  /** @type {{ sessionName?: string, shootDate?: string, expiryDays?: number }} */
   const values = {};
 
-  if (body.clientName !== undefined || requireName) {
-    const clientName = String(body.clientName ?? '').trim();
-    if (!clientName) {
+  if (body.sessionName !== undefined || requireName) {
+    const sessionName = String(body.sessionName ?? '').trim();
+    if (!sessionName) {
       return { error: 'Wpisz nazwę sesji — będzie widoczna na stronie ze zdjęciami.' };
     }
-    if (clientName.length > NAME_LIMIT) {
+    if (sessionName.length > NAME_LIMIT) {
       return { error: `Nazwa sesji jest za długa (najwyżej ${NAME_LIMIT} znaków).` };
     }
-    values.clientName = clientName;
+    values.sessionName = sessionName;
   }
 
   if (body.shootDate !== undefined) {

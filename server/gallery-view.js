@@ -12,7 +12,7 @@ import { galleryAdminPath, galleryShareUrl } from './paths.js';
 export function describeGallery(gallery) {
   return {
     slug: gallery.slug,
-    clientName: gallery.clientName,
+    sessionName: gallery.sessionName,
     // `null` would reach an <input type="date"> as the string "null"; the editor
     // treats '' as "she never set one".
     shootDate: gallery.shootDate ?? '',
