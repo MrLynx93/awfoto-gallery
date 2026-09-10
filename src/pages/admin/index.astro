@@ -78,8 +78,11 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                 column "Klient" made the second one sound like a different
                 thing entirely. */}
             <th>Sesja</th>
-            <th>Data</th>
-            <th>Hasło</th>
+            {/* The two the phone drops: on a small screen the row has to answer
+                "which session, how big, how long left" and nothing else. The
+                date and the password are both one tap away on the gallery. */}
+            <th class="col-date">Data</th>
+            <th class="col-pass">Hasło</th>
             <th>Zdjęcia</th>
             <th>Rozmiar</th>
             <th>Wygasa</th>
@@ -95,29 +98,41 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                     look at photos she uploaded. */}
                 <a href={galleryViewPath(gallery.slug)}>{gallery.clientName}</a>
               </td>
-              <td class="muted">{gallery.shootDate ?? '—'}</td>
+              <td class="muted col-date">{gallery.shootDate ?? '—'}</td>
               {/* Readable again from the row (server/passwords.js), so "what
                   was the password?" is answered by the list itself. Galleries
                   from before that column show a dash. */}
-              <td class="pass">{gallery.password ?? '—'}</td>
+              <td class="pass col-pass">{gallery.password ?? '—'}</td>
               <td class="num">{gallery.photoCount}</td>
               <td class="num">{megabytes(gallery.bytesTotal)}</td>
               <td class={gallery.expired ? 'expired' : ''}>
-                {gallery.expired ? 'wygasła' : `za ${daysUntil(gallery.expiresAt)} dni`}
+                {gallery.expired ? (
+                  'wygasła'
+                ) : (
+                  <>
+                    <span class="lead">za </span>
+                    {daysUntil(gallery.expiresAt)} dni
+                  </>
+                )}
               </td>
               <td class="right">
                 {/* Going back into a session that already exists needs an
                     obvious door, or the only one on this screen is "Nowa
                     galeria" -- and a second gallery for the same client is not
-                    what she means by "I forgot a few photos". This opens the
-                    same screen the gallery was made on: the name, the date, the
-                    term, and the drop zone. */}
+                    what she means by "I forgot a few photos". */}
                 <a
                   class="quiet"
                   href={galleryEditPath(gallery.slug)}
                   title="Zmień dane galerii albo dodaj zdjęcia"
                 >
-                  Edytuj
+                  {/* Word on a laptop, pictogram on a phone -- but the word is
+                      only hidden, never dropped, so the link keeps its name for
+                      a screen reader and for the tooltip. */}
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 20.2h4.2L19.4 9a1.9 1.9 0 0 0 0-2.7l-1.5-1.5a1.9 1.9 0 0 0-2.7 0L4 16v4.2z" />
+                    <path d="M14.4 5.6 18.7 9.9" />
+                  </svg>
+                  <span class="label">Edytuj</span>
                 </a>
                 {/* Deliberately a link to a screen that asks, not a button that
                     acts: the originals go with it, and 15 GB of disk is not a
@@ -128,7 +143,11 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                   href={`${galleryEditPath(gallery.slug)}/usun`}
                   title="Usuń galerię razem ze zdjęciami"
                 >
-                  Usuń
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.8h15M9.8 6.8V4.6h4.4v2.2M6.8 6.8l.9 12.6h8.6l.9-12.6" />
+                    <path d="M10.4 10.4v5.6M13.6 10.4v5.6" />
+                  </svg>
+                  <span class="label">Usuń</span>
                 </a>
               </td>
             </tr>
@@ -166,11 +185,11 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
   .bar-fill[data-level='warning'] { background: var(--glina); }
   .bar-fill[data-level='critical'] { background: var(--glina-ciemna); }
 
+  /* A last-resort escape hatch, not the plan: at phone width the table drops
+     two columns and its buttons become icons instead, so it fits. This only
+     catches the awkward middle -- a long client name on a narrow tablet. */
   .scroller { overflow-x: auto; }
-  /* The min-width is what makes the scroller do anything: without it the table
-     squeezes to the phone's width instead, wrapping names over three lines and
-     dates over two. Below this it scrolls sideways, which is legible. */
-  table { width: 100%; min-width: 44rem; border-collapse: collapse; font-size: 0.92rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
   th {
     text-align: left; font-weight: 500; font-size: 0.72rem;
     letter-spacing: 0.12em; text-transform: uppercase; color: var(--tekst-jasny);
@@ -178,6 +197,9 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
   }
   td { padding: 0.85rem 0.8rem; border-bottom: 1px solid var(--bez); }
   td a { color: var(--tekst); text-decoration: none; border-bottom: 1px solid var(--taupe); }
+  /* The icons only appear on a small screen; on a laptop the words say it
+     better than any pictogram of a pencil. */
+  td .quiet svg { display: none; }
   td a:hover { color: var(--glina-ciemna); }
   .num { font-variant-numeric: tabular-nums; }
   .pass { letter-spacing: 0.14em; color: var(--glina-ciemna); white-space: nowrap; }
@@ -185,6 +207,7 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
   /* `td a` above it is two elements' worth of specificity, so a bare .quiet
      lost to it and these links kept the client link's underline. */
   td a.quiet {
+    display: inline-flex; align-items: center; gap: 0.4rem;
     font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
     color: var(--tekst-jasny); text-decoration: none; border-bottom: 0;
   }
@@ -203,4 +226,56 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
   .small { font-size: 0.82rem; margin-top: 0.7rem; }
   .expired { color: var(--glina-ciemna); }
   .empty { color: var(--tekst-jasny); padding: 3rem 0; text-align: center; }
+
+  /*
+   * Phone: the row answers three questions -- which session, how big, how much
+   * time is left -- and offers the two things she can do to it. The date and
+   * the password go, because both are one tap away on the gallery itself and
+   * neither is why she opened this list; the words on the actions go too,
+   * replaced by their icons, because "EDYTUJ USUŃ" spelled out is wider than
+   * the client's name beside it. What is left fits 360px without scrolling,
+   * which is the point: a list you have to drag sideways is a list you cannot
+   * scan.
+   */
+  @media (max-width: 700px) {
+    .col-date, .col-pass { display: none; }
+
+    table { font-size: 0.85rem; }
+    /* The headings are the widest thing in three of these columns -- "ZDJĘCIA"
+       is wider than any count it labels -- so the tracking that makes them
+       elegant on a laptop is what has to go first. */
+    th {
+      padding: 0 0.22rem 0.6rem;
+      font-size: 0.64rem; letter-spacing: 0.06em;
+    }
+    /* The row keeps its height -- that is what makes it comfortable to tap --
+       and gives up the space between columns instead. */
+    td { padding: 0.8rem 0.22rem; }
+    td:first-child, th:first-child { padding-left: 0; }
+    td:last-child, th:last-child { padding-right: 0; }
+    /* A size reads as one thing or not at all: "12 800" above "MB" is worse
+       than a narrower column. */
+    .num { white-space: nowrap; }
+    .lead { display: none; }
+
+    td a.quiet {
+      /* A finger, not a mouse: the icon is 18px and the padding around it is
+         what makes the target big enough to hit. */
+      padding: 0.45rem;
+      margin: -0.45rem 0;
+    }
+    td .quiet svg {
+      display: block;
+      width: 18px; height: 18px;
+      fill: none; stroke: currentColor; stroke-width: 1.4;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    /* Hidden, not removed: it is still the link's accessible name. */
+    td .quiet .label {
+      position: absolute; width: 1px; height: 1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+    }
+    td a.quiet + a.quiet { margin-left: 0.15rem; }
+    td a.danger { color: var(--czerwien); }
+  }
 </style>
