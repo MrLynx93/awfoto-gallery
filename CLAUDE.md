@@ -240,6 +240,15 @@ whole path exercises in seconds.
 A gallery that has expired should show a friendly "this gallery has expired, contact
 the photographer" page — not a 404.
 
+The dashboard can also delete one on demand, for the session that is finished
+before its term or the one uploaded twice. It goes through `server/removal.js`,
+in the order the nightly sweep will want: condemn the row, then the files, then
+the row itself — so a run that dies halfway leaves a gallery nobody can reach
+rather than one that is reachable with half its photos gone. It is behind a
+confirmation screen that names the client and counts the photos, because the
+originals go with it and, if the card is already cleared, nothing anywhere can
+bring them back.
+
 ## Upload UI requirements
 
 One screen. Nothing else on it.

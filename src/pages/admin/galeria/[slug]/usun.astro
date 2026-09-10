@@ -1,0 +1,132 @@
+---
+/**
+ * "Are you sure?" — and it has to be asked properly.
+ *
+ * Deleting a gallery destroys the originals. If she has already cleared the
+ * card, there is nothing anywhere to restore from, so this is the one action in
+ * the panel that cannot be undone by any means at all. That is worth a screen
+ * rather than a `confirm()` box: this one names the client, counts the photos
+ * and says plainly what will be gone, so the decision is made looking at the
+ * gallery rather than at a dialog that says "OK / Cancel".
+ *
+ * It is also a plain form, so it works with no JavaScript, and a POST rather
+ * than a link, so nothing deletes a wedding by being prefetched or crawled.
+ */
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import { findBySlug } from '../../../../../server/galleries.js';
+import { removeGallery } from '../../../../../server/removal.js';
+import { daysUntil } from '../../../../../server/gallery-form.js';
+import { galleryEditPath } from '../../../../../server/paths.js';
+import { ADMIN_COOKIE, isAdmin } from '../../../../../server/sessions.js';
+
+if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
+  return Astro.redirect('/admin/login');
+}
+
+const { slug } = Astro.params;
+const gallery = await findBySlug(slug);
+
+// Already gone -- a second submit, or the nightly sweep got there first. The
+// list is the honest answer either way, and it is where a successful delete
+// lands too, so the two are indistinguishable to her. They should be.
+if (!gallery) {
+  return Astro.redirect('/admin');
+}
+
+if (Astro.request.method === 'POST') {
+  await removeGallery(gallery);
+  // Post/Redirect/Get: a refresh must not re-run a delete, and the banner is
+  // carried in the URL rather than a cookie because it survives exactly one
+  // page and nothing else needs to know about it.
+  return Astro.redirect('/admin?usunieto=1', 303);
+}
+
+const gb = (bytes: number) => (Number(bytes) / 1024 ** 3).toFixed(1);
+// expires_at is NOT NULL, so the fallback is unreachable; it is here because
+// daysUntil answers null for a gallery with no date and this file should not
+// pretend otherwise.
+const left = daysUntil(gallery.expiresAt) ?? 0;
+---
+
+<BaseLayout title="Usuń galerię">
+  <section class="confirm">
+    <h1>Usunąć tę galerię?</h1>
+
+    <dl class="what">
+      <div>
+        <dt>Klient</dt>
+        <dd>{gallery.clientName}</dd>
+      </div>
+      <div>
+        <dt>Data sesji</dt>
+        <dd>{gallery.shootDate ?? '—'}</dd>
+      </div>
+      <div>
+        <dt>Zdjęcia</dt>
+        <dd>{gallery.photoCount} ({gb(gallery.bytesTotal)} GB)</dd>
+      </div>
+      <div>
+        <dt>Termin</dt>
+        <dd>{left > 0 ? `jeszcze ${left} dni` : 'już minął'}</dd>
+      </div>
+    </dl>
+
+    <p class="warn" role="alert">
+      Zniknie link klienta i wszystkie zdjęcia z serwera. Tego nie da się cofnąć
+      — jeśli nie masz ich już nigdzie indziej, trzeba będzie wysłać je od nowa.
+    </p>
+
+    <form method="POST" class="actions">
+      <button type="submit" class="danger">Tak, usuń galerię</button>
+      <a class="cancel" href="/admin">Nie, wróć do listy</a>
+    </form>
+
+    <p class="note">
+      Chcesz tylko przedłużyć termin albo poprawić dane? <a
+        href={galleryEditPath(slug)}>Edytuj galerię</a>.
+    </p>
+  </section>
+</BaseLayout>
+
+<style>
+  .confirm { max-width: 34rem; margin: clamp(1rem, 6vh, 4rem) auto; }
+  h1 { margin-bottom: 1.6rem; }
+
+  .what {
+    margin: 0 0 2rem;
+    border-top: 1px solid var(--piaskowy);
+  }
+  .what div {
+    display: flex; justify-content: space-between; gap: 1.5rem;
+    padding: 0.7rem 0; border-bottom: 1px solid var(--bez);
+  }
+  dt {
+    font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--tekst-jasny);
+  }
+  dd { margin: 0; text-align: right; }
+
+  .warn {
+    background: #f7ece6; border: 1px solid var(--taupe); border-radius: 4px;
+    padding: 1rem 1.2rem; margin: 0 0 2rem; color: var(--glina-ciemna);
+  }
+
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.2rem; }
+
+  /* The destructive button is the one that looks unlike every other button in
+     the panel; "wróć do listy" is deliberately the quiet, easy one. */
+  .danger {
+    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 1em 1.8em; border: 0; border-radius: 3px;
+    background: #9c3b28; color: var(--biel); cursor: pointer;
+    transition: background 0.25s;
+  }
+  .danger:hover { background: #7d2f20; }
+  .cancel {
+    font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--tekst-jasny); text-decoration: none;
+  }
+  .cancel:hover { color: var(--glina-ciemna); }
+
+  .note { margin-top: 2.5rem; font-size: 0.85rem; color: var(--tekst-jasny); }
+</style>

@@ -19,6 +19,11 @@ if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
   return Astro.redirect('/admin/login');
 }
 
+// Set by the delete confirmation screen on its way back here. The row is
+// simply gone, which is clear enough with one gallery in the list and not at
+// all clear with nine, so it says so.
+const justDeleted = Astro.url.searchParams.has('usunieto');
+
 const galleries = await list();
 const used = await totalBytes();
 const usedFraction = Math.min(1, used / diskBudgetBytes);
@@ -38,6 +43,14 @@ const STATUS_LABEL = {
     <h1>Galerie</h1>
     <a class="cta" href="/admin/galeria">Nowa galeria</a>
   </header>
+
+  {
+    justDeleted && (
+      <p class="deleted" role="status">
+        Galeria została usunięta razem ze zdjęciami.
+      </p>
+    )
+  }
 
   <section class="disk" aria-label="Wykorzystanie dysku">
     <div class="disk-line">
@@ -104,6 +117,17 @@ const STATUS_LABEL = {
                 >
                   Edytuj
                 </a>
+                {/* Deliberately a link to a screen that asks, not a button that
+                    acts: the originals go with it, and 15 GB of disk is not a
+                    good enough reason to make that one click away from a list
+                    of nine similar-looking rows. */}
+                <a
+                  class="quiet danger"
+                  href={`${galleryEditPath(gallery.slug)}/usun`}
+                  title="Usuń galerię razem ze zdjęciami"
+                >
+                  Usuń
+                </a>
               </td>
             </tr>
           ))}
@@ -150,11 +174,23 @@ const STATUS_LABEL = {
   td a:hover { color: var(--glina-ciemna); }
   .num { font-variant-numeric: tabular-nums; }
   .right { text-align: right; white-space: nowrap; }
-  .quiet {
+  /* `td a` above it is two elements' worth of specificity, so a bare .quiet
+     lost to it and these links kept the client link's underline. */
+  td a.quiet {
     font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
     color: var(--tekst-jasny); text-decoration: none; border-bottom: 0;
   }
-  .quiet:hover { color: var(--glina-ciemna); }
+  td a.quiet:hover { color: var(--glina-ciemna); }
+  /* Two actions in one cell need space between them, and the destructive one
+     should not be the one the eye lands on first. */
+  .right .quiet + .quiet { margin-left: 1.1rem; }
+  td a.danger:hover { color: #9c3b28; }
+
+  .deleted {
+    background: #e7ece2; border: 1px solid #ccd6c4; border-radius: 4px;
+    padding: 0.9rem 1.2rem; margin: 0 0 2rem; color: #55604a;
+    font-size: 0.9rem;
+  }
   .muted { color: var(--tekst-jasny); }
   .small { font-size: 0.82rem; margin-top: 0.7rem; }
   .expired { color: var(--glina-ciemna); }
