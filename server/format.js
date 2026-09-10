@@ -20,3 +20,29 @@ export function megabytes(bytes) {
 export function gigabytes(bytes) {
   return `${(Number(bytes || 0) / 1024 ** 3).toFixed(1)} GB`;
 }
+
+/**
+ * Polish counts, because "3 zdjęcia" and "5 zdjęć" are different words and a
+ * list that says "1 zdjęcia" reads as broken to the only person who uses it.
+ *
+ * The rule: 1 takes the singular; 2-4 take the plural-few, except the teens
+ * (12-14), which take the plural-many along with everything else.
+ */
+function few(n) {
+  const last = n % 10;
+  const teen = n % 100;
+  return last >= 2 && last <= 4 && !(teen >= 12 && teen <= 14);
+}
+
+export function photoCount(count) {
+  const n = Math.max(0, Math.trunc(Number(count) || 0));
+  if (n === 1) return '1 zdjęcie';
+  return `${n} ${few(n) ? 'zdjęcia' : 'zdjęć'}`;
+}
+
+export function dayCount(days) {
+  const n = Math.max(0, Math.trunc(Number(days) || 0));
+  // "dzień" only in the singular; every other count takes "dni", teens
+  // included -- unlike zdjęcie, this word has no separate plural-few form.
+  return n === 1 ? '1 dzień' : `${n} dni`;
+}

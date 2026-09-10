@@ -12,7 +12,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { list, totalBytes } from '../../../server/galleries.js';
 import { daysUntil } from '../../../server/gallery-form.js';
 import { galleryEditPath, galleryViewPath } from '../../../server/paths.js';
-import { megabytes, gigabytes } from '../../../server/format.js';
+import { megabytes, gigabytes, photoCount, dayCount } from '../../../server/format.js';
 import { diskBudgetBytes } from '../../../server/config.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../server/sessions.js';
 
@@ -81,6 +81,7 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
             {/* The two the phone drops: on a small screen the row has to answer
                 "which session, how big, how long left" and nothing else. The
                 date and the password are both one tap away on the gallery. */}
+            <th class="summary" />
             <th class="col-date">Data</th>
             <th class="col-pass">Hasło</th>
             <th>Zdjęcia</th>
@@ -98,24 +99,28 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                     look at photos she uploaded. */}
                 <a href={galleryViewPath(gallery.slug)}>{gallery.clientName}</a>
               </td>
+              {/* The phone's whole row, in words. Everything the columns say
+                  beside it, said the way she would say it -- and built here
+                  rather than assembled out of ::after text, because "1 zdjęcie"
+                  and "5 zdjęć" are different words. Hidden on a wide screen,
+                  where the columns say it better. */}
+              <td class="summary">
+                {photoCount(gallery.photoCount)}, {megabytes(gallery.bytesTotal)}.{' '}
+                {gallery.expired
+                  ? 'Termin minął.'
+                  : `Wygasa za ${dayCount(daysUntil(gallery.expiresAt))}.`}
+              </td>
               <td class="muted col-date">{gallery.shootDate ?? '—'}</td>
               {/* Readable again from the row (server/passwords.js), so "what
                   was the password?" is answered by the list itself. Galleries
                   from before that column show a dash. */}
               <td class="pass col-pass">{gallery.password ?? '—'}</td>
-              <td class="num">{gallery.photoCount}</td>
-              <td class="num">{megabytes(gallery.bytesTotal)}</td>
-              <td class={gallery.expired ? 'expired' : ''}>
-                {gallery.expired ? (
-                  'wygasła'
-                ) : (
-                  <>
-                    <span class="lead">za </span>
-                    {daysUntil(gallery.expiresAt)} dni
-                  </>
-                )}
+              <td class="num col-count">{gallery.photoCount}</td>
+              <td class="num col-size">{megabytes(gallery.bytesTotal)}</td>
+              <td class={`col-expiry ${gallery.expired ? 'expired' : ''}`}>
+                {gallery.expired ? 'wygasła' : `za ${dayCount(daysUntil(gallery.expiresAt))}`}
               </td>
-              <td class="right">
+              <td class="right actions">
                 {/* Going back into a session that already exists needs an
                     obvious door, or the only one on this screen is "Nowa
                     galeria" -- and a second gallery for the same client is not
@@ -227,46 +232,75 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
   .expired { color: var(--glina-ciemna); }
   .empty { color: var(--tekst-jasny); padding: 3rem 0; text-align: center; }
 
+  /* Only the phone reads this cell; a wide screen has the columns. */
+  .summary { display: none; }
+
   /*
-   * Phone: the row answers three questions -- which session, how big, how much
-   * time is left -- and offers the two things she can do to it. The date and
-   * the password go, because both are one tap away on the gallery itself and
-   * neither is why she opened this list; the words on the actions go too,
-   * replaced by their icons, because "EDYTUJ USUŃ" spelled out is wider than
-   * the client's name beside it. What is left fits 360px without scrolling,
-   * which is the point: a list you have to drag sideways is a list you cannot
-   * scan.
+   * Phone: the table stops being a table.
+   *
+   * Six numeric columns squeezed into 360px made every client's name wrap over
+   * three lines to spare four characters somewhere else. So each gallery
+   * becomes a block instead -- the name on its own line, where it belongs, and
+   * everything the columns were saying underneath it as one sentence: "3
+   * zdjęcia, 240 MB. Wygasa za 30 dni." The two actions sit alongside as icons,
+   * centred against both lines.
+   *
+   * The markup stays a real table, which is what it is; only its display
+   * changes. That does mean the header row must go -- headings for columns that
+   * are no longer laid out in columns would be nonsense, and the sentence names
+   * its own values.
    */
   @media (max-width: 700px) {
-    .col-date, .col-pass { display: none; }
+    .scroller { overflow-x: visible; }
+    thead { display: none; }
+    table, tbody { display: block; width: 100%; }
 
-    table { font-size: 0.85rem; }
-    /* The headings are the widest thing in three of these columns -- "ZDJĘCIA"
-       is wider than any count it labels -- so the tracking that makes them
-       elegant on a laptop is what has to go first. */
-    th {
-      padding: 0 0.22rem 0.6rem;
-      font-size: 0.64rem; letter-spacing: 0.06em;
+    tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.15rem 1rem;
+      padding: 0.9rem 0;
+      border-bottom: 1px solid var(--bez);
     }
-    /* The row keeps its height -- that is what makes it comfortable to tap --
-       and gives up the space between columns instead. */
-    td { padding: 0.8rem 0.22rem; }
-    td:first-child, th:first-child { padding-left: 0; }
-    td:last-child, th:last-child { padding-right: 0; }
-    /* A size reads as one thing or not at all: "12 800" above "MB" is worse
-       than a narrower column. */
-    .num { white-space: nowrap; }
-    .lead { display: none; }
+
+    td { display: block; padding: 0; border: 0; }
+    .col-date, .col-pass, .col-count, .col-size, .col-expiry { display: none; }
+
+    td:first-child { grid-column: 1; font-size: 1.02rem; }
+    td:first-child a { border-bottom: 0; }
+
+    .summary {
+      display: block;
+      grid-column: 1;
+      font-size: 0.84rem;
+      line-height: 1.5;
+      color: var(--tekst-jasny);
+    }
+
+    /* Spanning both rows: one tap target per action, vertically centred against
+       the pair of lines rather than pinned to the name. */
+    .actions {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      display: flex;
+      align-items: center;
+      /* Enough of a gap that a thumb aiming at the pencil does not find the
+         bin, and no more: the wide layout's 1.1rem between the two words has
+         to be cancelled, or the icons drift apart. */
+      gap: 0.35rem;
+    }
+    .actions .quiet + .quiet { margin-left: 0; }
 
     td a.quiet {
       /* A finger, not a mouse: the icon is 18px and the padding around it is
          what makes the target big enough to hit. */
-      padding: 0.45rem;
-      margin: -0.45rem 0;
+      padding: 0.5rem;
+      margin: 0;
     }
     td .quiet svg {
       display: block;
-      width: 18px; height: 18px;
+      width: 19px; height: 19px;
       fill: none; stroke: currentColor; stroke-width: 1.4;
       stroke-linecap: round; stroke-linejoin: round;
     }
@@ -275,7 +309,7 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
       position: absolute; width: 1px; height: 1px;
       overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
     }
-    td a.quiet + a.quiet { margin-left: 0.15rem; }
+    /* A finger cannot hover, so the bin is red where it sits. */
     td a.danger { color: var(--czerwien); }
   }
 </style>
