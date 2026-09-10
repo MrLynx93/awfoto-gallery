@@ -271,14 +271,24 @@ archive still holds the deleted photo, so it is removed and the gallery goes
 back to `preparing` for the worker to rebuild — the client sees the "preparing"
 page for as long as that ZIP takes.
 
-The dashboard can also delete a whole gallery on demand, for the session that is
-finished before its term or the one uploaded twice. It goes through `server/removal.js`,
-in the order the nightly sweep will want: condemn the row, then the files, then
-the row itself — so a run that dies halfway leaves a gallery nobody can reach
-rather than one that is reachable with half its photos gone. It is behind a
-confirmation screen that names the client and counts the photos, because the
-originals go with it and, if the card is already cleared, nothing anywhere can
-bring them back.
+A whole gallery can go too, for the session that is finished before its term or
+the one uploaded twice. It goes through `server/removal.js`, in the order the
+nightly sweep will want: condemn the row, then the files, then the row itself —
+so a run that dies halfway leaves a gallery nobody can reach rather than one
+that is reachable with half its photos gone. It is always behind a confirmation
+that names the client and counts the photos, because the originals go with it
+and, if the card is already cleared, nothing anywhere can bring them back.
+
+That confirmation has two frames around one body (`DeleteGalleryConfirm.astro`).
+From the gallery's own page it is a `<dialog>`: she is already looking at the
+thing, and a separate screen that takes her away and then lands her on the list
+whether she says yes or no loses her place for nothing. From the dashboard's bin
+it is a page, because there she is looking at a list of nine similar rows rather
+than at the gallery, and being shown which one she picked is the point. The
+dialog needs no script beyond `showModal()` — Escape and the backdrop close it,
+and "no" is a `formmethod="dialog"` submit — and the button that opens it is a
+real link to the page version, so the question still gets asked with JavaScript
+off.
 
 ## Upload UI requirements
 

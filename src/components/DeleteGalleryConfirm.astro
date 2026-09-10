@@ -1,0 +1,133 @@
+---
+/**
+ * The "are you sure?" itself: what will be destroyed, said plainly, with the
+ * two buttons under it.
+ *
+ * Shared by the two places that ask. On the gallery's own page it is the body
+ * of a dialog, because she is already looking at the gallery and taking her to
+ * another screen to ask about it — and then dropping her on the list whether she
+ * says yes or no — loses her place for no reason. From the dashboard it is a
+ * page, because there she is not looking at the gallery at all, and a modal on a
+ * list of nine similar rows is exactly where the wrong one gets deleted.
+ *
+ * Either way it is a form and a POST: no JavaScript required, and nothing
+ * deletes a wedding by being prefetched or crawled.
+ */
+import { daysUntil } from '../../server/gallery-form.js';
+import { dayCount, megabytes } from '../../server/format.js';
+
+interface Props {
+  gallery: {
+    clientName: string;
+    shootDate?: string | null;
+    photoCount: number;
+    bytesTotal: number;
+    expiresAt: string;
+  };
+  /**
+   * Where "no" goes. Omitted inside a dialog, where "no" simply closes it --
+   * `formmethod="dialog"` does that natively, so even that button needs no
+   * script of its own.
+   */
+  cancel?: { href: string; label: string };
+}
+
+const { gallery, cancel } = Astro.props;
+
+// expires_at is NOT NULL, so the fallback is unreachable; it is here because
+// daysUntil answers null for a gallery with no date and this file should not
+// pretend otherwise.
+const left = daysUntil(gallery.expiresAt) ?? 0;
+---
+
+<dl class="what">
+  <div>
+    <dt>Klient</dt>
+    <dd>{gallery.clientName}</dd>
+  </div>
+  <div>
+    <dt>Data sesji</dt>
+    <dd>{gallery.shootDate ?? '—'}</dd>
+  </div>
+  <div>
+    <dt>Zdjęcia</dt>
+    <dd>{gallery.photoCount} ({megabytes(gallery.bytesTotal)})</dd>
+  </div>
+  <div>
+    <dt>Termin</dt>
+    <dd>{left > 0 ? `jeszcze ${dayCount(left)}` : 'już minął'}</dd>
+  </div>
+</dl>
+
+<p class="warn" role="alert">
+  Zniknie link klienta i wszystkie zdjęcia z serwera. Tego nie da się cofnąć —
+  jeśli nie masz ich już nigdzie indziej, trzeba będzie wysłać je od nowa.
+</p>
+
+<form method="POST" class="actions">
+  <input type="hidden" name="intent" value="delete-gallery" />
+  <button type="submit" class="danger">Tak, usuń galerię</button>
+  {
+    cancel ? (
+      <a class="cancel" href={cancel.href}>
+        {cancel.label}
+      </a>
+    ) : (
+      <button type="submit" class="cancel" formmethod="dialog" formnovalidate>
+        Nie, wróć do galerii
+      </button>
+    )
+  }
+</form>
+
+<style>
+  .what {
+    margin: 0 0 2rem;
+    border-top: 1px solid var(--piaskowy);
+  }
+  .what div {
+    display: flex; justify-content: space-between; gap: 1.5rem;
+    padding: 0.7rem 0; border-bottom: 1px solid var(--bez);
+  }
+  dt {
+    font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--tekst-jasny);
+  }
+  dd { margin: 0; text-align: right; }
+
+  .warn {
+    background: #f7ece6; border: 1px solid var(--taupe); border-radius: 4px;
+    padding: 1rem 1.2rem; margin: 0 0 2rem; color: var(--glina-ciemna);
+  }
+
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.2rem; }
+
+  /* The destructive button is the one that looks unlike every other button in
+     the panel: filled, and in a colour used nowhere else. */
+  .danger {
+    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
+    /* Transparent rather than none: the outlined button beside it has a real
+       1px border, and without this the filled one is two pixels shorter. */
+    border: 1px solid transparent;
+    background: var(--czerwien); color: var(--biel); cursor: pointer;
+    /* Stated on both, so a <button> and an <a> side by side come out the same
+       height: a button's default line-height is `normal` and an anchor inherits
+       the body's 1.75, and the two sat six pixels apart. */
+    line-height: 1.2;
+    transition: background 0.25s;
+  }
+  .danger:hover { background: var(--czerwien-ciemna); }
+
+  /* A button too, not a passing link: it sits next to the destructive one and
+     is the choice most likely to be wanted, so it has to look like something to
+     press. Outlined rather than filled, so the two are still told apart. */
+  .cancel {
+    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
+    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
+    border: 1px solid var(--taupe); background: transparent;
+    color: var(--tekst); text-decoration: none; line-height: 1.2; cursor: pointer;
+    transition: background 0.25s, border-color 0.25s;
+  }
+  .cancel:hover { background: var(--piaskowy); border-color: var(--piaskowy); }
+</style>

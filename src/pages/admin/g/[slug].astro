@@ -23,6 +23,7 @@
  */
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import GalleryEditor from '../../../components/GalleryEditor.tsx';
+import DeleteGalleryConfirm from '../../../components/DeleteGalleryConfirm.astro';
 import GalleryGrid from '../../../components/GalleryGrid.astro';
 import Lightbox from '../../../components/Lightbox.astro';
 import { readManifest } from '../../../../server/storage.js';
@@ -33,6 +34,7 @@ import {
   readPassword,
 } from '../../../../server/galleries.js';
 import { removePhoto } from '../../../../server/photos.js';
+import { removeGallery } from '../../../../server/removal.js';
 import { wakeWorker } from '../../../../server/wake.js';
 import { describeGallery } from '../../../../server/gallery-view.js';
 import { EXPIRY_CHOICES, DEFAULT_EXPIRY_DAYS } from '../../../../server/gallery-form.js';
@@ -56,7 +58,7 @@ if (!row) {
 }
 
 /**
- * The two form posts this page answers. Both are forms rather than fetches so
+ * The three form posts this page answers. Both are forms rather than fetches so
  * they work if the island never hydrates, and both end in a redirect so a
  * refresh does not repeat them -- minting a third password after she copied the
  * second, or deleting the photo that moved into the deleted one's place.
@@ -64,6 +66,13 @@ if (!row) {
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const intent = String(form.get('intent') ?? '');
+
+  if (intent === 'delete-gallery') {
+    await removeGallery(row);
+    // The gallery this page is about no longer exists, so the list is the only
+    // place left to land -- and it says what happened.
+    return Astro.redirect('/admin?usunieto=1', 303);
+  }
 
   if (intent === 'delete-photo') {
     const removed = await removePhoto(slug, Number(form.get('index')));
@@ -109,8 +118,18 @@ try {
     password={password}
     expiryChoices={EXPIRY_CHOICES}
     defaultExpiryDays={DEFAULT_EXPIRY_DAYS}
-    deletePath={galleryDeletePath(slug)}
+    deletePath={`${galleryDeletePath(slug)}?wroc=galeria`}
   />
+
+  {/* The question, asked without leaving the gallery. The button in the header
+      above opens it; with no JavaScript that button is simply a link to the
+      page version, which asks exactly the same thing. Escape and the backdrop
+      close it, and "no" is a plain formmethod="dialog" submit -- no script of
+      its own anywhere in here. */}
+  <dialog id="usun-dialog" aria-labelledby="usun-tytul">
+    <h2 id="usun-tytul">Usunąć tę galerię?</h2>
+    <DeleteGalleryConfirm gallery={row} />
+  </dialog>
 
   {
     photos.length > 0 && (
@@ -137,6 +156,19 @@ try {
 </BaseLayout>
 
 <style>
+  dialog {
+    /* Wide enough for the two buttons to sit side by side rather than stack:
+       at 32rem they missed by a couple of pixels. */
+    width: min(34rem, calc(100% - 2rem));
+    padding: clamp(1.4rem, 4vw, 2rem);
+    border: 1px solid var(--piaskowy);
+    border-radius: 4px;
+    background: var(--kremowy);
+    color: var(--tekst);
+  }
+  dialog::backdrop { background: rgba(74, 64, 56, 0.45); }
+  dialog h2 { margin: 0 0 1.4rem; }
+
   .photos { margin-top: 2rem; }
 
   .photos-head {

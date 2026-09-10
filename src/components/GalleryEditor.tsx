@@ -389,7 +389,21 @@ export default function GalleryEditor({
       <header className="editor-head">
         <h1>{gallery ? gallery.clientName : 'Nowa galeria'}</h1>
         {gallery && deletePath && (
-          <a className="delete" href={deletePath}>
+          /* A real link, so it works before this island hydrates and without
+             JavaScript at all -- it leads to the page that asks the same
+             question. When the dialog the page renders is there, it is asked
+             here instead, without leaving the gallery she is looking at. */
+          <a
+            className="delete"
+            href={deletePath}
+            onClick={(event) => {
+              const dialog = document.getElementById('usun-dialog');
+              if (dialog instanceof HTMLDialogElement) {
+                event.preventDefault();
+                dialog.showModal();
+              }
+            }}
+          >
             Usuń galerię
           </a>
         )}
