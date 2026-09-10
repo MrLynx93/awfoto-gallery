@@ -33,7 +33,7 @@ import '@uppy/dashboard/css/style.min.css';
 
 // Pure string arithmetic, no server imports, so it bundles into the island --
 // and the plural rule for "zdjęcie" is written once for the whole panel.
-import { photoCount } from '../../server/format.js';
+import { dayCount, photoCount } from '../../server/format.js';
 
 export interface GalleryView {
   slug: string;
@@ -117,6 +117,7 @@ export default function GalleryEditor({
   const dashboardRef = useRef<HTMLDivElement | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dirty =
     !gallery ||
@@ -248,7 +249,11 @@ export default function GalleryEditor({
    * the first attempt was held back for want of a client name.
    */
   const startUpload = useCallback(async () => {
-    const slug = dirty ? await save() : gallery?.slug ?? null;
+    // An existing gallery already has a slug, so photos attach to it without
+    // touching the details -- dropping a folder in should not feel like pressing
+    // save. Only the empty screen has to create something first, and there that
+    // *is* what dropping photos means.
+    const slug = gallery ? gallery.slug : await save();
     if (!slug) {
       setHeld(true);
       return;
@@ -261,7 +266,40 @@ export default function GalleryEditor({
       // Per-file failures arrive through upload-error; this only catches a
       // refusal to start at all, which the dashboard already shows.
     }
-  }, [dirty, save, gallery, uppy]);
+  }, [save, gallery, uppy]);
+
+  /**
+   * Saving a gallery that already exists is not something she should have to
+   * ask for.
+   *
+   * Every field here is a correction to something already saved -- a name typed
+   * as "Kasia" that should read "Kasia i Tomek", a date picked wrong -- and a
+   * screen that keeps those changes hostage behind a button is a screen that
+   * loses them when she navigates away. So they save themselves: a moment after
+   * she stops typing, or the instant she leaves the field.
+   *
+   * Only for a gallery that exists. On the empty screen the first save *creates*
+   * something, and creating a gallery from the first letter of a name (and again
+   * from the second) is not the same kind of harmless.
+   */
+  useEffect(() => {
+    if (!gallery || !dirty || saving) return;
+    // An empty name is not a save, it is a field she is in the middle of
+    // clearing. The blur handler surfaces the error if she leaves it that way.
+    if (!clientName.trim()) return;
+
+    autosaveTimer.current = setTimeout(() => void save(), 800);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+  }, [gallery, dirty, saving, clientName, save]);
+
+  /** Leaving a field is a decision; it does not wait out the timer. */
+  const saveNow = () => {
+    if (!gallery || !dirty) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    void save();
+  };
 
   // Uppy's listeners are attached once, so they must not close over state that
   // changes. They call through these refs instead -- an earlier version
@@ -353,6 +391,7 @@ export default function GalleryEditor({
     () => () => {
       if (copyTimer.current) clearTimeout(copyTimer.current);
       if (flashTimer.current) clearTimeout(flashTimer.current);
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     },
     [],
   );
@@ -420,10 +459,13 @@ export default function GalleryEditor({
       <section className="card">
         <h2 className="card-title">O sesji</h2>
 
+        {/* Still a form, so Enter in a field saves rather than doing nothing,
+            and so the empty screen has something for its button to submit. */}
         <form
           className="details"
           onSubmit={(event) => {
             event.preventDefault();
+            if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
             void save();
           }}
         >
@@ -438,6 +480,7 @@ export default function GalleryEditor({
               placeholder="Zuzia i Marek"
               value={clientName}
               onChange={(event) => setClientName(event.target.value)}
+              onBlur={saveNow}
             />
           </label>
 
@@ -448,6 +491,7 @@ export default function GalleryEditor({
               type="date"
               value={shootDate}
               onChange={(event) => setShootDate(event.target.value)}
+              onBlur={saveNow}
             />
           </label>
 
@@ -460,7 +504,9 @@ export default function GalleryEditor({
             >
               {gallery && (
                 <option value={UNCHANGED}>
-                  {gallery.expired ? 'Wybierz nowy termin' : `Bez zmian (${gallery.daysLeft} dni)`}
+                  {gallery.expired
+                    ? 'Wybierz nowy termin'
+                    : `Bez zmian (${dayCount(gallery.daysLeft ?? 0)})`}
                 </option>
               )}
               {expiryChoices.map((choice) => (
@@ -472,12 +518,30 @@ export default function GalleryEditor({
           </label>
 
           <div className="details-actions">
-            <button type="submit" disabled={saving || (!dirty && Boolean(gallery))}>
-              {saving ? 'Zapisuję…' : gallery ? 'Zapisz zmiany' : 'Zapisz i pokaż link'}
-            </button>
-            <p className="details-state" role="status">
-              {savedFlash ? 'Zapisane ✓' : dirty && gallery ? 'Są niezapisane zmiany.' : ''}
-            </p>
+            {gallery ? (
+              /* No button: the fields above save themselves. This says which of
+                 the three states it is in, and nothing when it is in none of
+                 them -- a line that reads "Zapisane ✓" permanently is furniture,
+                 not feedback. */
+              <p className="details-state" role="status">
+                {saving
+                  ? 'Zapisuję…'
+                  : savedFlash
+                    ? 'Zapisane ✓'
+                    : dirty
+                      ? 'Zmiany zapiszą się same.'
+                      : ''}
+              </p>
+            ) : (
+              <>
+                <button type="submit" disabled={saving}>
+                  {saving ? 'Zapisuję…' : 'Zapisz i pokaż link'}
+                </button>
+                <p className="details-state" role="status">
+                  {savedFlash ? 'Zapisane ✓' : ''}
+                </p>
+              </>
+            )}
           </div>
         </form>
 

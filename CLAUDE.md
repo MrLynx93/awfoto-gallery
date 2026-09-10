@@ -319,11 +319,19 @@ ask. Nothing on that page is a second gallery for the client she says she forgot
 a few photos for, which is what the alternative kept producing.
 
 Nothing is created by opening the page. The row appears at the first moment
-there is something to create — she saves, or she drops a folder in — which is
-what lets the details and the drop zone share one screen: the upload needs a
-gallery to attach to and gets one just in time, without a wizard step to walk
-through first. Saving after that never reloads the page, because a reload
-would empty the queue mid-upload.
+there is something to create — she presses "Zapisz i pokaż link", or she drops a
+folder in — which is what lets the details and the drop zone share one screen:
+the upload needs a gallery to attach to and gets one just in time, without a
+wizard step to walk through first.
+
+**After that the fields save themselves.** Every edit to a gallery that exists is
+a correction to something already stored, and a button that holds those changes
+hostage is a button that loses them when she navigates away — so a moment after
+she stops typing, or the instant she leaves a field, it saves. The create button
+disappears once there is something to correct rather than create. Saving never
+reloads the page, because a reload would empty the upload queue; and dropping
+photos into a gallery that exists does not save the details either, because
+choosing a photo should not feel like pressing save.
 
 ### Resumability — get this right
 
