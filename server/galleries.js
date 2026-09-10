@@ -161,6 +161,26 @@ export async function setPassword(slug, password) {
 export const readPassword = (gallery) =>
   gallery?.passwordEnc ? unseal(gallery.passwordEnc) : null;
 
+/**
+ * After a photo is deleted: the count is known here, everything else is the
+ * worker's to recompute. `preparing` is what sends it back -- the archive still
+ * contains the deleted photo and has to be rebuilt, and that status is the only
+ * thing that stops the worker deciding it has nothing to do.
+ */
+export async function markPhotosChanged(slug, photoCount) {
+  await db().query(
+    `UPDATE galleries
+        SET photo_count = :photoCount,
+            -- The worker retallies on its next run. Zeroing matters only for a
+            -- gallery that just lost its last photo, which the worker will find
+            -- empty and leave alone.
+            bytes_total = IF(:photoCount = 0, 0, bytes_total),
+            status = 'preparing'
+      WHERE slug = :slug`,
+    { slug, photoCount },
+  );
+}
+
 export async function markReady(slug, { photoCount, bytesTotal, status = 'ready' }) {
   await db().query(
     `UPDATE galleries

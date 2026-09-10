@@ -252,8 +252,21 @@ whole path exercises in seconds.
 A gallery that has expired should show a friendly "this gallery has expired, contact
 the photographer" page — not a 404.
 
-The dashboard can also delete one on demand, for the session that is finished
-before its term or the one uploaded twice. It goes through `server/removal.js`,
+A single photo can go too, from the gallery's own page: a small × on each tile,
+handled by `server/photos.js`. The subtlety worth knowing before touching that
+file is that **a photo's identity is its position**. The worker lists the
+originals in name order and writes previews as `<n>-thumb.jpg`, so removing one
+from the middle shifts everything after it — and the next worker run, finding a
+preview already at every index, would reuse them and hand the client a grid
+where each photo after the deleted one shows its neighbour. So the previews are
+*renamed* down one place, which is exactly the shift the worker's own numbering
+performs, and a few renames replace re-encoding the tail of a wedding. The
+archive still holds the deleted photo, so it is removed and the gallery goes
+back to `preparing` for the worker to rebuild — the client sees the "preparing"
+page for as long as that ZIP takes.
+
+The dashboard can also delete a whole gallery on demand, for the session that is
+finished before its term or the one uploaded twice. It goes through `server/removal.js`,
 in the order the nightly sweep will want: condemn the row, then the files, then
 the row itself — so a run that dies halfway leaves a gallery nobody can reach
 rather than one that is reachable with half its photos gone. It is behind a

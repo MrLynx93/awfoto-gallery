@@ -12,9 +12,7 @@
  * Nothing is processed in this path. The bytes land, the response returns, and
  * the worker catches up afterwards.
  */
-import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { mkdir, rename, rm } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
 
@@ -23,6 +21,7 @@ import { Server } from '@tus/server';
 import { FileStore } from '@tus/file-store';
 
 import { STORAGE_ROOT, baseUrl } from '../config.js';
+import { wakeWorker } from '../wake.js';
 import { originalsDir, galleryDir } from '../storage.js';
 import { findBySlug, touchUpload } from '../galleries.js';
 import { ADMIN_COOKIE, cookieFromHeader, isAdmin } from '../sessions.js';
@@ -36,33 +35,6 @@ const incomingDir = path.join(STORAGE_ROOT, 'incoming');
 // to this directory at construction, so creating it later -- in a request hook,
 // as an earlier version did -- is already too late on a fresh install.
 mkdirSync(incomingDir, { recursive: true });
-
-const workerPath = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'worker.js',
-);
-
-/**
- * Detached, so the response is not waiting on 800 photos being resized, and
- * `unref`'d so this process can exit without killing it. The worker's own lock
- * makes a duplicate spawn harmless — which matters, because every completed
- * upload triggers one.
- */
-function wakeWorker() {
-  try {
-    const child = spawn(process.execPath, [workerPath], {
-      detached: true,
-      stdio: 'ignore',
-      env: process.env,
-    });
-    child.unref();
-  } catch (error) {
-    // The five-minute cron is the safety net; a failed spawn delays a gallery,
-    // it does not lose one.
-    console.error('[upload] could not spawn worker:', error.message);
-  }
-}
 
 function adminOnly(req, res, next) {
   if (!isAdmin(cookieFromHeader(req.headers.cookie, ADMIN_COOKIE))) {
@@ -148,7 +120,7 @@ const tus = new Server({
     // batch has finished or another file is still on its way.
     await touchUpload(slug);
 
-    wakeWorker();
+    wakeWorker('upload');
     return {};
   },
 });

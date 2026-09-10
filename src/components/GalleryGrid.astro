@@ -14,30 +14,53 @@
 interface Props {
   slug: string;
   count: number;
+  /**
+   * The panel passes this; the client's page never does. It puts a small × on
+   * each photo, posting to the page it sits on -- a plain form, so it works
+   * without JavaScript, and an inline script asks first when there is any.
+   */
+  deletable?: boolean;
 }
 
-const { slug, count } = Astro.props;
+const { slug, count, deletable = false } = Astro.props;
 const photos = Array.from({ length: count }, (_, index) => index);
 ---
 
 <div class="photo-grid" id="photo-grid">
   {
     photos.map((index) => (
-      <button
-        class="photo"
-        type="button"
-        data-lightbox-index={index}
-        aria-label={`Powiększ zdjęcie ${index + 1} z ${count}`}
-      >
-        <img
-          src={`/g/${slug}/p/${index}/thumb.jpg`}
-          srcset={`/g/${slug}/p/${index}/thumb.jpg 500w, /g/${slug}/p/${index}/large.jpg 2048w`}
-          sizes="(max-width: 700px) 50vw, 25vw"
-          alt={`Zdjęcie ${index + 1}`}
-          loading={index < 4 ? 'eager' : 'lazy'}
-          decoding="async"
-        />
-      </button>
+      <div class="tile">
+        <button
+          class="photo"
+          type="button"
+          data-lightbox-index={index}
+          aria-label={`Powiększ zdjęcie ${index + 1} z ${count}`}
+        >
+          <img
+            src={`/g/${slug}/p/${index}/thumb.jpg`}
+            srcset={`/g/${slug}/p/${index}/thumb.jpg 500w, /g/${slug}/p/${index}/large.jpg 2048w`}
+            sizes="(max-width: 700px) 50vw, 25vw"
+            alt={`Zdjęcie ${index + 1}`}
+            loading={index < 4 ? 'eager' : 'lazy'}
+            decoding="async"
+          />
+        </button>
+
+        {deletable && (
+          /* A form rather than a button with a fetch behind it: this page
+             already answers POSTs, and it keeps working with no JavaScript.
+             The index is the photo's identity -- see server/photos.js. */
+          <form class="remove" method="POST" data-confirm={`Usunąć zdjęcie ${index + 1}?`}>
+            <input type="hidden" name="intent" value="delete-photo" />
+            <input type="hidden" name="index" value={index} />
+            <button type="submit" aria-label={`Usuń zdjęcie ${index + 1}`} title="Usuń to zdjęcie">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 6 12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </form>
+        )}
+      </div>
     ))
   }
 </div>
@@ -52,6 +75,49 @@ const photos = Array.from({ length: count }, (_, index) => index);
     .photo-grid {
       grid-template-columns: repeat(2, 1fr);
     }
+  }
+
+  .tile { position: relative; }
+
+  /* Small, in the corner, and quiet until she goes near it: this sits on top of
+     a photograph and is not what the grid is for. It fills red on hover so
+     there is no doubt what it does. */
+  .remove {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    margin: 0;
+    opacity: 0.75;
+    transition: opacity 0.2s;
+  }
+  .tile:hover .remove,
+  .remove:focus-within { opacity: 1; }
+
+  .remove button {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(253, 251, 247, 0.9);
+    color: var(--tekst);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .remove button:hover,
+  .remove button:focus-visible {
+    background: var(--czerwien);
+    color: var(--biel);
+  }
+  .remove svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
   }
 
   .photo {
@@ -76,4 +142,21 @@ const photos = Array.from({ length: count }, (_, index) => index);
     outline: 2px solid var(--glina);
     outline-offset: 3px;
   }
+
+  /* A finger cannot hover, so on a touch screen the button is simply there. */
+  @media (hover: none) {
+    .remove { opacity: 1; }
+  }
 </style>
+
+{/* Asks before it submits, and only where the × exists at all. Without
+    JavaScript the form still posts -- one deliberate click on a small target,
+    which is the trade the client's page never sees. */}
+<script is:inline>
+  document.getElementById('photo-grid')?.addEventListener('submit', (event) => {
+    const form = event.target.closest('.remove[data-confirm]');
+    if (form && !window.confirm(`${form.dataset.confirm} Tego nie da się cofnąć.`)) {
+      event.preventDefault();
+    }
+  });
+</script>
