@@ -297,6 +297,51 @@ question is still asked. Reached that way from a gallery it carries
 itself needs no script beyond `showModal()` — Escape and the backdrop close it,
 and "no" is a `formmethod="dialog"` submit.
 
+## The grid is justified, not square
+
+Both grids — the client's and the panel's — are `GalleryGrid.astro`, and no
+photograph in either is cropped to a square. A square tile is the one shape a
+photographer never delivers: it cuts a portrait off at the top and bottom and
+takes the ends off a panorama. So every photo keeps its own proportions and the
+rows are justified, each line filling the width at a single height, the way
+Flickr and Google Photos lay a set out.
+
+The packing is flex wrapping, not JavaScript. A tile asks for a width
+proportional to its aspect ratio (`flex-basis: ar × --row`) and grows by the
+same ratio, so whatever lands on a line keeps widths proportional to ratios —
+which is exactly the condition for the heights on that line to come out equal.
+Where a line breaks is then the browser's own wrapping, at whatever width the
+viewport happens to be, with nothing to measure and nothing to recompute on
+resize. The `::after` absorbs the slack on the last line, which otherwise has
+too few tiles and would stretch them.
+
+`--row` — the height a line aims for — is the only number to turn: it decides
+how many photos land on a line, and the more that do, the closer the rows come
+to the target, since a line is only stretched by what the next photo could not
+fit into. Measured across a mixed session: four to a line holds the rows within
+about a fifth of each other, three lets a line of portraits tower. Hence 12rem,
+9rem below 1000px, 6.5rem below 700px — four, three and two to a line.
+
+The alternative is the linear-partition algorithm the same galleries use, which
+picks the line breaks that minimise the deviation from the target height. It
+fits marginally better and costs a measuring pass per viewport and a script.
+Not worth it for something the browser justifies on its own.
+
+**The proportions come from the manifest**, so `width` and `height` in
+`manifest.json` are now load-bearing rather than decoration. Two things follow:
+
+- They are measured **on the thumbnail, not on the original**. The resize has
+  already applied `-auto-orient`, so a portrait frame stored landscape with an
+  EXIF rotation reports the shape the grid will actually draw — which
+  `identify` on the original gets backwards, tilting every such photo in its
+  row. It is also cheaper than reading a 45 MP file twice.
+- A manifest written before this change has `null` for both on any photo whose
+  derivatives an earlier run reused. The grid assumes 3:2 where it has nothing,
+  and the worker repairs it: `backfillDimensions()` runs before the "nothing to
+  do" return, measures the thumbnails that already exist, and rewrites the
+  manifest without re-encoding anything or touching the ZIP. Once per gallery,
+  then never again.
+
 ## Upload UI requirements
 
 One screen. Nothing else on it.

@@ -348,8 +348,10 @@
   display: contents;
 }
 
+/* The shape is the grid's business -- it gives the card the same ratio and
+   flex sizing as the photographs beside it, so it sits in a justified row
+   rather than breaking it. See GalleryGrid.astro. */
 .uploader-card {
-  aspect-ratio: 1;
   border: 1px dashed var(--taupe);
   border-radius: 3px;
   overflow: hidden;

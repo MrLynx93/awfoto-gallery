@@ -162,7 +162,7 @@ try {
       </p>
     )}
 
-    <GalleryGrid slug={row.slug} count={photos.length} deletable={true}>
+    <GalleryGrid slug={row.slug} photos={photos} deletable={true}>
       {/* The drop zone, shaped like the photographs it sits among. Astro wraps
           an island in <astro-island>, which `display: contents` keeps out of the
           grid's way so the uploader itself is the cell. */}

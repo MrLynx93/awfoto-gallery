@@ -165,10 +165,18 @@ export async function dimensions(src) {
  * be competing with the web server that has to keep answering.
  */
 export async function makeDerivatives(src, destFor) {
-  const { width, height } = await dimensions(src);
-
   const thumb = await makeDerivative(src, destFor('thumb'), 'thumb');
   const large = await makeDerivative(src, destFor('large'), 'large');
+
+  /**
+   * Measured on the thumbnail rather than on the original, and deliberately:
+   * the resize has already applied `-auto-orient`, so a portrait frame stored
+   * landscape with an EXIF rotation reports the shape the grid will actually
+   * draw -- which `identify` on the original would get backwards, tilting every
+   * such photo in a justified row. It is also far cheaper than reading a 45 MP
+   * file a second time, and 500 px is ample precision for a ratio.
+   */
+  const { width, height } = await dimensions(thumb.path);
 
   return { width, height, bytes: thumb.bytes + large.bytes };
 }

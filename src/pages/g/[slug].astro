@@ -181,7 +181,7 @@ const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
           </p>
         )}
 
-        <GalleryGrid slug={slug} count={photos.length} />
+        <GalleryGrid slug={slug} photos={photos} />
         <Lightbox />
 
         <p class="hint">

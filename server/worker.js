@@ -16,7 +16,7 @@ import path from 'node:path';
 
 import { db, migrate, close } from './db.js';
 import { findBySlug, markReady, needingWork } from './galleries.js';
-import { makeDerivatives } from './images.js';
+import { makeDerivatives, dimensions } from './images.js';
 import { buildArchive, verifyArchive } from './archive.js';
 import { canFit } from './disk.js';
 import {
@@ -26,6 +26,7 @@ import {
   previewPath,
   archivePath,
   manifestPath,
+  readManifest,
 } from './storage.js';
 import { STORAGE_ROOT } from './config.js';
 
@@ -77,6 +78,44 @@ const QUIET_PERIOD_MS = 45_000;
 const MAX_WAIT_MS = 20 * 60_000;
 const POLL_MS = 10_000;
 
+/** The grid reads this; nothing else does. One place writes it. */
+const writeManifest = (slug, photos) =>
+  writeFile(manifestPath(slug), JSON.stringify({ slug, photos }, null, 2) + '\n');
+
+const measured = (photo) => Number(photo?.width) > 0 && Number(photo?.height) > 0;
+
+/**
+ * Records the proportions of photos in a manifest written before the grid had
+ * any use for them.
+ *
+ * The grid lays rows out from each photo's aspect ratio and assumes 3:2 where it
+ * has none, which would show a portrait frame cropped for as long as the
+ * manifest stayed silent -- and a settled gallery never reaches the resize loop
+ * below that would fill it in. So this repairs it in place: a few `identify`
+ * calls against thumbnails that already exist, no re-encoding, and the ZIP
+ * untouched. It runs once per gallery and is a no-op on every run after.
+ */
+async function backfillDimensions(slug, manifest, log) {
+  const missing = (manifest.photos ?? []).filter((photo) => !measured(photo));
+  if (missing.length === 0) return;
+
+  let filled = 0;
+  for (const photo of missing) {
+    try {
+      const { width, height } = await dimensions(previewPath(slug, photo.index, 'thumb'));
+      photo.width = width;
+      photo.height = height;
+      filled += 1;
+    } catch {
+      // No thumbnail for it yet -- the loop below will make one and measure it.
+    }
+  }
+
+  if (filled === 0) return;
+  await writeManifest(slug, manifest.photos);
+  log(`[worker] ${slug}: recorded proportions for ${filled} photo(s)`);
+}
+
 /**
  * Brings one gallery up to date.
  *
@@ -100,6 +139,13 @@ async function processGallery(slug, { log = console.log } = {}) {
     return 'idle';
   }
   if (files.length === 0) return 'idle';
+
+  // What the last run recorded. Read before anything decides to return early:
+  // it carries the proportions the grid needs, which are cheap to carry forward
+  // and a subprocess each to measure again.
+  const previous = await readManifest(slug).catch(() => null);
+  if (previous) await backfillDimensions(slug, previous, log);
+  const before = new Map((previous?.photos ?? []).map((photo) => [photo.filename, photo]));
 
   // Still arriving? Generate derivatives for what is here, but do not finalise:
   // building the archive now would only mean rebuilding it for the next photo,
@@ -136,11 +182,21 @@ async function processGallery(slug, { log = console.log } = {}) {
       if (existing[0] && existing[1]) {
         originalBytes += (await stat(src)).size;
         derivativeBytes += existing[0].size + existing[1].size;
+
+        // Proportions come from the last manifest when it has them, and from
+        // the thumbnail when it does not -- the thumbnail rather than the
+        // original because it is the orientation the grid will draw, and
+        // because measuring a 500 px JPEG costs nothing next to a 45 MP one.
+        const known = before.get(filename);
+        const size = measured(known)
+          ? { width: known.width, height: known.height }
+          : await dimensions(thumb).catch(() => ({ width: null, height: null }));
+
         photos.push({
           index,
           filename,
-          width: null,
-          height: null,
+          width: size.width,
+          height: size.height,
           bytes: (await stat(src)).size,
         });
         continue;
@@ -209,10 +265,7 @@ async function processGallery(slug, { log = console.log } = {}) {
     status = 'zip_unavailable';
   }
 
-  await writeFile(
-    manifestPath(slug),
-    JSON.stringify({ slug, photos }, null, 2) + '\n',
-  );
+  await writeManifest(slug, photos);
 
   await markReady(slug, {
     photoCount: photos.length,
