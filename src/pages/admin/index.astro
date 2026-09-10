@@ -30,12 +30,6 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
 
 const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
 
-const STATUS_LABEL = {
-  preparing: 'przygotowuję',
-  ready: 'gotowa',
-  failed: 'błąd',
-  zip_unavailable: 'bez ZIP-a',
-};
 ---
 
 <BaseLayout title="Panel" wide={true}>
@@ -74,8 +68,8 @@ const STATUS_LABEL = {
     galleries.length === 0 ? (
       <p class="empty">Nie ma jeszcze żadnej galerii. Zacznij od „Nowa galeria”.</p>
     ) : (
-      /* Eight columns do not fit a phone, and squeezing them makes the whole
-         list unreadable rather than just the far end of it. */
+      /* Still more columns than a phone fits, and squeezing them makes the
+         whole list unreadable rather than just the far end of it. */
       <div class="scroller">
       <table>
         <thead>
@@ -86,7 +80,6 @@ const STATUS_LABEL = {
             <th>Zdjęcia</th>
             <th>Rozmiar</th>
             <th>Wygasa</th>
-            <th>Status</th>
             <th></th>
           </tr>
         </thead>
@@ -108,11 +101,6 @@ const STATUS_LABEL = {
               <td class="num">{gb(gallery.bytesTotal)} GB</td>
               <td class={gallery.expired ? 'expired' : ''}>
                 {gallery.expired ? 'wygasła' : `za ${daysUntil(gallery.expiresAt)} dni`}
-              </td>
-              <td>
-                <span class="status" data-status={gallery.status}>
-                  {STATUS_LABEL[gallery.status] ?? gallery.status}
-                </span>
               </td>
               <td class="right">
                 {/* Going back into a session that already exists needs an
@@ -209,13 +197,4 @@ const STATUS_LABEL = {
   .small { font-size: 0.82rem; margin-top: 0.7rem; }
   .expired { color: var(--glina-ciemna); }
   .empty { color: var(--tekst-jasny); padding: 3rem 0; text-align: center; }
-
-  /* State reads at a glance, not only as a word. */
-  .status {
-    display: inline-block; font-size: 0.72rem; letter-spacing: 0.08em;
-    text-transform: uppercase; padding: 0.3em 0.7em; border-radius: 999px;
-    background: var(--bez); color: var(--tekst-jasny);
-  }
-  .status[data-status='ready'] { background: #e7ece2; color: #55604a; }
-  .status[data-status='failed'] { background: #f0e0d8; color: var(--glina-ciemna); }
 </style>
