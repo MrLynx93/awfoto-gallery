@@ -14,8 +14,18 @@ import type { Crumb } from '../components/SiteHeader.astro';
 
 interface Props {
   title: string;
-  /** Wider pages (the gallery grid) opt out of the narrow reading column. */
-  wide?: boolean;
+  /**
+   * How much room the page takes.
+   *
+   * `text` is the reading column, for a page that is mostly words -- the gate,
+   * the expired notice, the login. `panel` is the site's own measure, which the
+   * admin screens keep because a form field or a table row gains nothing from
+   * being 1800px wide. `photos` is the client's gallery, which is a page of
+   * photographs and nothing else: there the width is what the photographs are
+   * printed at, so it takes as much of the screen as the shell's own gutters
+   * allow.
+   */
+  width?: 'text' | 'panel' | 'photos';
   /**
    * The breadcrumb trail, and whether to draw the header bar at all.
    *
@@ -28,7 +38,7 @@ interface Props {
   homeHref?: string;
 }
 
-const { title, wide = false, crumbs, homeHref } = Astro.props;
+const { title, width = 'text', crumbs, homeHref } = Astro.props;
 ---
 
 <!doctype html>
@@ -53,7 +63,7 @@ const { title, wide = false, crumbs, homeHref } = Astro.props;
   <body>
     {crumbs && <SiteHeader crumbs={crumbs} home={homeHref} />}
 
-    <main class={wide ? 'wide' : ''}>
+    <main class={width}>
       <slot />
     </main>
 
@@ -68,8 +78,15 @@ const { title, wide = false, crumbs, homeHref } = Astro.props;
         margin: 0 auto;
         padding: clamp(2rem, 6vw, 4rem) var(--pad-x);
       }
-      main:not(.wide) {
+      main.text {
         max-width: 46rem;
+      }
+      /* Far past the site's measure, because nothing on this page is read
+         across it: it holds a title, one line about the expiry date, and the
+         photographs. The cap is only there so that a very wide monitor sets
+         that one line across half a metre. */
+      main.photos {
+        max-width: 1800px;
       }
       footer {
         padding: 2rem var(--pad-x);

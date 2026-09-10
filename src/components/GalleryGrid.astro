@@ -84,63 +84,101 @@ function ratioOf(photo: PhotoMeta): number {
   return Math.min(MAX_RATIO, Math.max(MIN_RATIO, width / height));
 }
 
-const tiles = photos.map((photo, index) => ({ index, ratio: ratioOf(photo).toFixed(3) }));
+/**
+ * What to tell the browser a tile will be, so it picks the right preview.
+ *
+ * With uniform tiles one `sizes` covered every photo. Justified rows do not
+ * work that way: on one line a panorama can be three times the width of the
+ * portrait beside it, and a single average would leave the 500 px thumbnail
+ * stretched across the widest tiles on a screen that is not retina. Each photo
+ * gets its own estimate instead, from the two things that decide its width --
+ * its ratio, and the row height, which is a fifth of a container that is itself
+ * most of the viewport (hence 18vw) until the clamp stops it at 17rem.
+ *
+ * An estimate, not a measurement: it only has to land on the right side of the
+ * 500 px boundary, and erring high costs a larger file rather than a soft one.
+ */
+function sizesFor(ratio: number): string {
+  const cap = Math.round(ratio * 17 * 16);
+  return `(max-width: 700px) 50vw, min(${(ratio * 18).toFixed(1)}vw, ${cap}px)`;
+}
+
+const tiles = photos.map((photo, index) => {
+  const ratio = ratioOf(photo);
+  return { index, ratio: ratio.toFixed(3), sizes: sizesFor(ratio) };
+});
 ---
 
-<div class="photo-grid" id="photo-grid">
-  {/* The panel puts its drop zone here, as the first card in the grid: adding
-      photos belongs among the photos rather than in a panel above them. The
-      client's page passes nothing, so the grid starts at the first photograph. */}
-  <slot name="lead" />
+<div class="grid-frame">
+  <div class="photo-grid" id="photo-grid">
+    {/* The panel puts its drop zone here, as the first card in the grid: adding
+        photos belongs among the photos rather than in a panel above them. The
+        client's page passes nothing, so the grid starts at the first photograph. */}
+    <slot name="lead" />
 
-  {
-    tiles.map(({ index, ratio }) => (
-      <div class="tile" style={`--ar: ${ratio}`}>
-        <button
-          class="photo"
-          type="button"
-          data-lightbox-index={index}
-          aria-label={`Powiększ zdjęcie ${index + 1} z ${count}`}
-        >
-          <img
-            src={`/g/${slug}/p/${index}/thumb.jpg`}
-            srcset={`/g/${slug}/p/${index}/thumb.jpg 500w, /g/${slug}/p/${index}/large.jpg 2048w`}
-            sizes="(max-width: 700px) 50vw, 25vw"
-            alt={`Zdjęcie ${index + 1}`}
-            loading={index < 4 ? 'eager' : 'lazy'}
-            decoding="async"
-          />
-        </button>
+    {
+      tiles.map(({ index, ratio, sizes }) => (
+        <div class="tile" style={`--ar: ${ratio}`}>
+          <button
+            class="photo"
+            type="button"
+            data-lightbox-index={index}
+            aria-label={`Powiększ zdjęcie ${index + 1} z ${count}`}
+          >
+            <img
+              src={`/g/${slug}/p/${index}/thumb.jpg`}
+              srcset={`/g/${slug}/p/${index}/thumb.jpg 500w, /g/${slug}/p/${index}/large.jpg 2048w`}
+              sizes={sizes}
+              alt={`Zdjęcie ${index + 1}`}
+              loading={index < 4 ? 'eager' : 'lazy'}
+              decoding="async"
+            />
+          </button>
 
-        {deletable && (
-          /* A form rather than a button with a fetch behind it: this page
-             already answers POSTs, and it keeps working with no JavaScript.
-             The index is the photo's identity -- see server/photos.js. */
-          <form class="remove" method="POST" data-confirm={`Usunąć zdjęcie ${index + 1}?`}>
-            <input type="hidden" name="intent" value="delete-photo" />
-            <input type="hidden" name="index" value={index} />
-            <button type="submit" aria-label={`Usuń zdjęcie ${index + 1}`} title="Usuń to zdjęcie">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m6 6 12 12M18 6 6 18" />
-              </svg>
-            </button>
-          </form>
-        )}
-      </div>
-    ))
-  }
+          {deletable && (
+            /* A form rather than a button with a fetch behind it: this page
+               already answers POSTs, and it keeps working with no JavaScript.
+               The index is the photo's identity -- see server/photos.js. */
+            <form class="remove" method="POST" data-confirm={`Usunąć zdjęcie ${index + 1}?`}>
+              <input type="hidden" name="intent" value="delete-photo" />
+              <input type="hidden" name="index" value={index} />
+              <button type="submit" aria-label={`Usuń zdjęcie ${index + 1}`} title="Usuń to zdjęcie">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 6 12 12M18 6 6 18" />
+                </svg>
+              </button>
+            </form>
+          )}
+        </div>
+      ))
+    }
+  </div>
 </div>
 
 <style>
+  /* Exists to be measured: `cqw` below asks how wide the grid is, and an
+     element cannot ask that of itself. The panel's grid sits inside a card and
+     the client's fills the page, so the same viewport gives them very different
+     room -- which a `vw` here would miss, sizing the panel's photographs for a
+     width it does not have. */
+  .grid-frame {
+    container-type: inline-size;
+  }
+
   .photo-grid {
-    /* The height a row aims for. Every width in the layout is derived from it,
-       so this one number decides how many photos land on a line -- and the more
-       that land there, the closer each row comes to the target, because a line
-       is only stretched by whatever the next photo could not fit into. Measured
-       across a mixed session: four to a line at desktop width holds the rows
-       within about a fifth of each other, while aiming for five shrinks the
-       photographs and aiming for three lets a line of portraits tower. */
-    --row: 12rem;
+    /* The height a row aims for, and the one number that decides how big the
+       photographs are: every width in the layout is derived from it. A fifth of
+       the available width puts three or four on a line, which is the range
+       where the rows come out even -- a line is only stretched by whatever the
+       next photo could not fit into, so the more that land on it the closer it
+       stays to the target. Aiming higher shrinks to two and lets a line of
+       portraits tower; aiming lower makes them small for no gain.
+
+       The floor holds a phone at two to a line, where a fifth of 350px would
+       be a thumbnail. The ceiling stops a wide monitor from serving 400px-tall
+       photographs off a 2048px preview -- past it the extra room adds photos
+       to the line rather than size to each one. */
+    --row: clamp(6.5rem, 20cqw, 17rem);
 
     display: flex;
     flex-wrap: wrap;
@@ -154,19 +192,6 @@ const tiles = photos.map((photo, index) => ({ index, ratio: ratioOf(photo).toFix
     flex: 1000000 0 0;
   }
 
-  /* Narrower viewports need a smaller target to keep a sensible number of
-     photographs on a line: at 12rem a tablet would fit two per row and a phone
-     one. These two steps hold it at three and two. */
-  @media (max-width: 1000px) {
-    .photo-grid {
-      --row: 9rem;
-    }
-  }
-  @media (max-width: 700px) {
-    .photo-grid {
-      --row: 6.5rem;
-    }
-  }
 
   .tile,
   /* The panel's drop zone, slotted in from outside this component -- a

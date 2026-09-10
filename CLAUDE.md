@@ -315,12 +315,35 @@ viewport happens to be, with nothing to measure and nothing to recompute on
 resize. The `::after` absorbs the slack on the last line, which otherwise has
 too few tiles and would stretch them.
 
-`--row` — the height a line aims for — is the only number to turn: it decides
-how many photos land on a line, and the more that do, the closer the rows come
-to the target, since a line is only stretched by what the next photo could not
-fit into. Measured across a mixed session: four to a line holds the rows within
-about a fifth of each other, three lets a line of portraits tower. Hence 12rem,
-9rem below 1000px, 6.5rem below 700px — four, three and two to a line.
+`--row` — the height a line aims for — is the only number to turn, and it is
+what decides how big the photographs are: every width in the layout is derived
+from it. It is a fifth of the grid's own width (`20cqw`, floored at 6.5rem and
+capped at 17rem), which puts three or four on a line at any size — the range
+where the rows come out even, since a line is only stretched by what the next
+photo could not fit into. Aiming higher drops to two and lets a line of
+portraits tower; aiming lower makes the photographs small for no gain. Past the
+17rem cap the extra room adds photos to a line rather than size to each one,
+which is the right trade against a 2048px preview.
+
+**Container units, not `vw`** — hence the `.grid-frame` wrapper, which exists
+only to be measured (an element cannot query itself). The panel's grid sits
+inside a card and the client's fills the page, so at one viewport width they
+have very different room; a `vw` here would size the panel's photographs for a
+width they do not have, and drop it to two a line.
+
+The room itself is the other half of "bigger". The client's gallery is a page
+of photographs and nothing else, so it takes `width="photos"` from BaseLayout —
+1800px rather than the site's 1240px measure, which is also where the header's
+own wordmark sits at that width. The panel keeps `width="panel"`: a form field
+or a table row gains nothing from being 1800px wide, and its photographs are
+already bigger through `--row`.
+
+Each photo carries **its own `sizes`**, computed from its ratio, rather than the
+one average a uniform grid could use — on a justified line a panorama can be
+three times the width of the portrait beside it, and a single figure leaves the
+500px thumbnail stretched across the widest tiles on a screen that is not
+retina. The estimate only has to land on the right side of that 500px boundary;
+erring high costs a larger file rather than a soft photograph.
 
 The alternative is the linear-partition algorithm the same galleries use, which
 picks the line breaks that minimise the deviation from the target height. It

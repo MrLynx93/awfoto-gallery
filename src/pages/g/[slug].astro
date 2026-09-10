@@ -102,7 +102,7 @@ const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
     navigate. It leads to the photographer's site, not to /admin. */}
 <BaseLayout
   title={gallery?.clientName ?? 'Galeria'}
-  wide={authorised}
+  width={authorised ? 'photos' : 'text'}
   crumbs={[]}
   homeHref="https://aw-foto.pl"
 >
