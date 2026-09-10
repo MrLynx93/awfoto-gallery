@@ -21,6 +21,14 @@
   --tekst-jasny: #7a6e63;
   --biel: #ffffff;
 
+  /* The one colour that is not part of the boho palette, and is not meant to
+     be: it marks deleting a gallery, in the panel only. A client never sees
+     it. Kept red enough to read as a warning next to all this clay and sand --
+     an earlier brick shade sat close enough to --glina-ciemna to look like
+     another brand colour rather than a stop sign. */
+  --czerwien: #c62828;
+  --czerwien-ciemna: #a11d1d;
+
   /* type */
   --display: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
   --body: 'Jost', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;

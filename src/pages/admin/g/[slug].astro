@@ -188,11 +188,15 @@ const STATUS_NOTE: Record<string, string> = {
   }
   .act:hover { background: var(--piaskowy); border-color: var(--piaskowy); }
 
-  /* Outlined, not filled: on a page she opens to look at photos, the button
-     that destroys them should be recognisable without being loud. The same red
-     as the confirmation screen it leads to. */
-  .act.danger { color: #9c3b28; border-color: #e0c4bb; }
-  .act.danger:hover { background: #9c3b28; border-color: #9c3b28; color: var(--biel); }
+  /* Outlined rather than filled -- on a page she opens to look at photos, the
+     control that destroys them should be unmistakable without being the first
+     thing the eye lands on -- but outlined in the full red, not a tint of it.
+     The same red as the confirmation screen it leads to, which it fills with
+     on hover. */
+  .act.danger { color: var(--czerwien); border-color: var(--czerwien); }
+  .act.danger:hover {
+    background: var(--czerwien); border-color: var(--czerwien); color: var(--biel);
+  }
 
   .warn {
     background: #f7ece6; border: 1px solid var(--taupe); border-radius: 4px;

@@ -128,14 +128,14 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
     /* Transparent rather than none: the outlined button beside it has a real
        1px border, and without this the filled one is two pixels shorter. */
     border: 1px solid transparent;
-    background: #9c3b28; color: var(--biel); cursor: pointer;
+    background: var(--czerwien); color: var(--biel); cursor: pointer;
     /* Stated on both, so the <button> and the <a> next to it come out the same
        height: a button's default line-height is `normal`, an anchor inherits
        the body's 1.75, and the two sat six pixels apart. */
     line-height: 1.2;
     transition: background 0.25s;
   }
-  .danger:hover { background: #7d2f20; }
+  .danger:hover { background: var(--czerwien-ciemna); }
   /* A button too, not a passing link: it sits next to the destructive one and
      is the choice most likely to be wanted, so it has to look like something to
      press. Outlined rather than filled, so the two are still told apart at a
