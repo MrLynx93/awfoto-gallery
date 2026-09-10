@@ -18,7 +18,31 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
+  justify-content: space-between;
   gap: 1rem;
+}
+
+/* Outlined in the full red rather than filled: on the page she opens to look at
+   a gallery, the control that destroys it should be unmistakable without being
+   the first thing the eye lands on. It fills on hover, and leads to a screen
+   that asks. */
+.delete {
+  font-family: var(--body);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.85em 1.5em;
+  border: 1px solid var(--czerwien);
+  border-radius: 3px;
+  color: var(--czerwien);
+  text-decoration: none;
+  line-height: 1.2;
+  transition: background 0.25s, color 0.25s;
+}
+
+.delete:hover {
+  background: var(--czerwien);
+  color: var(--biel);
 }
 
 .editor-head h1 {

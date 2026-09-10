@@ -21,15 +21,20 @@ export default defineConfig({
   /**
    * The two-page upload wizard's URLs, kept alive as redirects.
    *
-   * /admin/nowa named the session and /admin/wyslij/<slug> took the photos;
-   * both are now one editor at /admin/galeria. The second of those is the URL
-   * she is told to come back to in order to resume an interrupted upload, so it
-   * is plausibly in a browser's history or on a sticky note, and landing on the
-   * right screen costs two lines here.
+   * Every URL a gallery has ever had, kept pointing at the one it has now:
+   * /admin/nowa named the session, /admin/wyslij/<slug> took the photos, and
+   * /admin/galeria/<slug> was the editor after those two merged. Each was at
+   * some point the address she was told to come back to, so each is plausibly
+   * in a browser's history, and landing on the right screen costs a line.
    */
   redirects: {
     '/admin/nowa': { status: 301, destination: '/admin/galeria' },
-    '/admin/wyslij/[slug]': { status: 301, destination: '/admin/galeria/[slug]' },
+    '/admin/wyslij/[slug]': { status: 301, destination: '/admin/g/[slug]' },
+    // The editor and the view merged into /admin/g/<slug>. Both halves of the
+    // old pair still answer, because either could be in a browser's history --
+    // /admin/galeria/<slug> was where an interrupted upload was resumed from.
+    '/admin/galeria/[slug]': { status: 301, destination: '/admin/g/[slug]' },
+    '/admin/galeria/[slug]/usun': { status: 301, destination: '/admin/g/[slug]/usun' },
   },
 
   /**

@@ -11,7 +11,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { list, totalBytes } from '../../../server/galleries.js';
 import { daysUntil } from '../../../server/gallery-form.js';
-import { galleryEditPath, galleryViewPath } from '../../../server/paths.js';
+import { galleryAdminPath, galleryDeletePath } from '../../../server/paths.js';
 import { megabytes, gigabytes, photoCount, dayCount } from '../../../server/format.js';
 import { diskBudgetBytes } from '../../../server/config.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../server/sessions.js';
@@ -94,10 +94,13 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
           {galleries.map((gallery) => (
             <tr>
               <td>
-                {/* Her own view, not the client's link: /g asks for the
-                    password, and she should not have to type a client's code to
-                    look at photos she uploaded. */}
-                <a href={galleryViewPath(gallery.slug)}>{gallery.clientName}</a>
+                {/* Her own page for the gallery, not the client's link: /g
+                    asks for the password, and she should not have to type a
+                    client's code to look at photos she uploaded. It opens on
+                    the details and the drop zone, so this is also the way in to
+                    changing anything -- which is why there is no second link
+                    beside it. */}
+                <a href={galleryAdminPath(gallery.slug)}>{gallery.clientName}</a>
               </td>
               {/* The phone's whole row, in words. Everything the columns say
                   beside it, said the way she would say it -- and built here
@@ -121,31 +124,14 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                 {gallery.expired ? 'wygasła' : `za ${dayCount(daysUntil(gallery.expiresAt))}`}
               </td>
               <td class="right actions">
-                {/* Going back into a session that already exists needs an
-                    obvious door, or the only one on this screen is "Nowa
-                    galeria" -- and a second gallery for the same client is not
-                    what she means by "I forgot a few photos". */}
-                <a
-                  class="quiet"
-                  href={galleryEditPath(gallery.slug)}
-                  title="Zmień dane galerii albo dodaj zdjęcia"
-                >
-                  {/* Word on a laptop, pictogram on a phone -- but the word is
-                      only hidden, never dropped, so the link keeps its name for
-                      a screen reader and for the tooltip. */}
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 20.2h4.2L19.4 9a1.9 1.9 0 0 0 0-2.7l-1.5-1.5a1.9 1.9 0 0 0-2.7 0L4 16v4.2z" />
-                    <path d="M14.4 5.6 18.7 9.9" />
-                  </svg>
-                  <span class="label">Edytuj</span>
-                </a>
-                {/* Deliberately a link to a screen that asks, not a button that
-                    acts: the originals go with it, and 15 GB of disk is not a
-                    good enough reason to make that one click away from a list
-                    of nine similar-looking rows. */}
+                {/* One action here, not two. The name opens the gallery,
+                    and that page is the editor, so a pencil beside it would go
+                    where the row already goes. Deleting is the one thing that
+                    page cannot be, so it keeps its own door -- a link to a
+                    screen that asks, never a button that acts. */}
                 <a
                   class="quiet danger"
-                  href={`${galleryEditPath(gallery.slug)}/usun`}
+                  href={galleryDeletePath(gallery.slug)}
                   title="Usuń galerię razem ze zdjęciami"
                 >
                   <svg viewBox="0 0 24 24" aria-hidden="true">

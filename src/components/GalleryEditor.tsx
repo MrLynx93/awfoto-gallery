@@ -45,8 +45,7 @@ export interface GalleryView {
   daysLeft: number | null;
   expired: boolean;
   shareUrl: string;
-  editPath: string;
-  viewPath: string;
+  path: string;
 }
 
 interface ExpiryChoice {
@@ -65,6 +64,12 @@ interface Props {
   password: string | null;
   expiryChoices: ExpiryChoice[];
   defaultExpiryDays: number;
+  /**
+   * Present once there is a gallery to delete, absent on the new-gallery
+   * screen. It is a link to the confirmation page rather than an action here:
+   * the originals go with it.
+   */
+  deletePath?: string;
 }
 
 const STATUS_NOTE: Record<string, string> = {
@@ -83,6 +88,7 @@ export default function GalleryEditor({
   password: initialPassword,
   expiryChoices,
   defaultExpiryDays,
+  deletePath,
 }: Props) {
   const [gallery, setGallery] = useState<GalleryView | null>(initialGallery);
   const [password, setPassword] = useState<string | null>(initialPassword);
@@ -216,7 +222,7 @@ export default function GalleryEditor({
         // From here on this *is* the gallery's own page, so a refresh reopens it
         // rather than offering a blank form -- and the password cookie, scoped to
         // this path, is sent when it does.
-        if (!gallery) window.history.replaceState(null, '', saved.editPath);
+        if (!gallery) window.history.replaceState(null, '', saved.path);
 
         return saved.slug;
       } catch {
@@ -332,17 +338,13 @@ export default function GalleryEditor({
   // Several of these are open at once when she is catching up on a backlog,
   // and "Nowa galeria" five times over is no help in a row of tabs.
   //
-  // The breadcrumb needs the same treatment, but only on the screen that
-  // started empty: there the last crumb says "Nowa galeria" beside a gallery
-  // that now has a name, and the page never reloads to correct itself. On an
-  // existing gallery's editor the last crumb is "Edycja" and renaming it would
-  // be nonsense -- hence the flag rather than a blind write.
-  const startedEmpty = useRef(initialGallery === null);
-
+  // The breadcrumb gets the same treatment. On every screen this island appears
+  // on, the last crumb names the gallery -- "Nowa galeria" until it has a name,
+  // the client's name after that -- and the page never reloads to correct
+  // either one.
   useEffect(() => {
     if (!gallery) return;
     document.title = `${gallery.clientName} — AW Fotografia`;
-    if (!startedEmpty.current) return;
     const crumb = document.querySelector('[data-crumb-current]');
     if (crumb) crumb.textContent = gallery.clientName;
   }, [gallery?.clientName]);
@@ -386,6 +388,11 @@ export default function GalleryEditor({
           back to the list is the breadcrumb in the header. */}
       <header className="editor-head">
         <h1>{gallery ? gallery.clientName : 'Nowa galeria'}</h1>
+        {gallery && deletePath && (
+          <a className="delete" href={deletePath}>
+            Usuń galerię
+          </a>
+        )}
       </header>
 
       {gallery?.expired && (
@@ -502,11 +509,6 @@ export default function GalleryEditor({
             <button type="button" onClick={copyLink}>
               {copied ? 'Skopiowane ✓' : 'Kopiuj link'}
             </button>
-            {/* Her own view of the gallery -- no password gate. The link above
-                is the client's and does ask for one. */}
-            <a className="ghost" href={gallery.viewPath}>
-              Zobacz zdjęcia
-            </a>
           </div>
 
           <p className="finish-note">

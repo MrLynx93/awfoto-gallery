@@ -17,7 +17,7 @@ import { findBySlug } from '../../../../../server/galleries.js';
 import { removeGallery } from '../../../../../server/removal.js';
 import { daysUntil } from '../../../../../server/gallery-form.js';
 import { megabytes } from '../../../../../server/format.js';
-import { galleryEditPath, galleryViewPath } from '../../../../../server/paths.js';
+import { galleryAdminPath } from '../../../../../server/paths.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../../../server/sessions.js';
 
 if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
@@ -52,7 +52,7 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
   title="Usuń galerię"
   crumbs={[
     { label: 'Galeria', href: '/admin' },
-    { label: gallery.clientName, href: galleryViewPath(slug) },
+    { label: gallery.clientName, href: galleryAdminPath(slug) },
     { label: 'Usuń' },
   ]}
 >
@@ -90,7 +90,7 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
 
     <p class="note">
       Chcesz tylko przedłużyć termin albo poprawić dane? <a
-        href={galleryEditPath(slug)}>Edytuj galerię</a>.
+        href={galleryAdminPath(slug)}>Wróć do galerii</a>.
     </p>
   </section>
 </BaseLayout>

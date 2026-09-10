@@ -184,11 +184,11 @@ threat behind it. It also ignores `expires_at`, because an expired gallery is
 closed to the client and still on disk until the sweep, and the panel is where
 she decides which it should be.
 
-Her own view of a gallery is a **separate page**, `/admin/g/:slug`, not a bypass
-inside the client's. `/g/:slug` keeps exactly one behaviour — gate, then grid —
-so it stays openable in a private window to see precisely what the client sees,
-and no branch can show the wrong page to the wrong person. Both render the same
-`GalleryGrid` and `Lightbox` off the same preview routes.
+Her own page for a gallery is a **separate page**, `/admin/g/:slug`, not a
+bypass inside the client's. `/g/:slug` keeps exactly one behaviour — gate, then
+grid — so it stays openable in a private window to see precisely what the client
+sees, and no branch can show the wrong page to the wrong person. Both render the
+same `GalleryGrid` and `Lightbox` off the same preview routes.
 
 ### On "Node must never stream multi-GB files"
 
@@ -273,11 +273,14 @@ One screen. Nothing else on it.
   finish line; make it unmistakable that she is done.
 - Errors in plain Polish with a retry button. Never surface a stack trace.
 
-The same screen is also the edit screen. `/admin/galeria` opens it empty;
-`/admin/galeria/<slug>`, reached from the dashboard's "Edytuj", opens it on a
-gallery that already exists — details filled in, link and password above the
-drop zone, more photos welcome. There is no separate edit form, and no second
-gallery for the client she says she forgot a few photos for.
+The same screen is also the edit screen, and the gallery's own page.
+`/admin/galeria` opens it empty; `/admin/g/<slug>` is it for a gallery that
+exists — details filled in, link and password above the drop zone, the photos
+below, more welcome. There is no separate edit form and no view/edit pair: she
+is the only person who opens either, she is always allowed to change what she is
+looking at, and "which of the two am I on?" is not a question the panel should
+ask. Nothing on that page is a second gallery for the client she says she forgot
+a few photos for, which is what the alternative kept producing.
 
 Nothing is created by opening the page. The row appears at the first moment
 there is something to create — she saves, or she drops a folder in — which is

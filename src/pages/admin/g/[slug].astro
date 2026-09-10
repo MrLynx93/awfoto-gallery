@@ -1,70 +1,73 @@
 ---
 /**
- * The photographer's view of a gallery: exactly what the client sees, with no
- * password in front of it.
+ * The photographer's page for one gallery. There is only one.
  *
- * She uploaded these photos. Making her type the client's code to check her own
- * work is a lock with nothing behind it — and until the password was stored
- * (server/passwords.js) she often could not have typed it anyway. So the admin
- * session opens any gallery here, and `server/routes/files.js` honours the same
- * session for the previews, the originals and the ZIP.
+ * It used to be two: a view at this URL and an editor at /admin/galeria/<slug>,
+ * with a button on each pointing at the other. Nothing was gained by the split
+ * -- she is the only person who ever opens either, she is always allowed to
+ * change what she is looking at, and "which of the two am I on?" was a question
+ * the panel had no business asking. So the details, the link, the drop zone and
+ * the photos are one page now, and the edit button is gone because there is
+ * nothing to switch into.
  *
- * Deliberately a *different URL* from /g/<slug> rather than a bypass bolted
- * onto it. The client's page keeps exactly one behaviour — gate, then grid —
- * which is what makes it possible to open it in a private window and see the
- * real thing. Two audiences, two pages, no branch that could show the wrong one
- * to the wrong person.
+ * The order is what she does with it: what the session is, what to send the
+ * client, where to drop more photos, and then the photos themselves. Everything
+ * she came for is above the grid, so a wedding's worth of thumbnails is never
+ * in the way.
  *
- * An expired gallery still renders here. For the client it is closed; for her
- * it is a gallery that is still on disk until the nightly sweep, and this is
- * the screen where she notices in time to extend it.
+ * The password is simply here, every time -- stored sealed alongside the scrypt
+ * hash (server/passwords.js) so this page can show it rather than offering a
+ * new one. No gate in front of any of it: `server/routes/files.js` honours the
+ * admin session for the previews, the originals and the ZIP, and /g/<slug>
+ * stays exactly what the client gets, gate and all.
  */
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import GalleryEditor from '../../../components/GalleryEditor.tsx';
 import GalleryGrid from '../../../components/GalleryGrid.astro';
 import Lightbox from '../../../components/Lightbox.astro';
 import { readManifest } from '../../../../server/storage.js';
-import { findBySlug, isExpired, readPassword } from '../../../../server/galleries.js';
-import { galleryEditPath, galleryShareUrl } from '../../../../server/paths.js';
+import { findBySlug, setPassword, readPassword } from '../../../../server/galleries.js';
+import { describeGallery } from '../../../../server/gallery-view.js';
+import { EXPIRY_CHOICES, DEFAULT_EXPIRY_DAYS } from '../../../../server/gallery-form.js';
+import { photoCount } from '../../../../server/format.js';
+import { generatePassword } from '../../../../server/passwords.js';
+import { galleryAdminPath, galleryDeletePath } from '../../../../server/paths.js';
 import { ADMIN_COOKIE, isAdmin } from '../../../../server/sessions.js';
+import '../../../styles/editor.css';
 
 if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
   return Astro.redirect('/admin/login');
 }
 
 const { slug } = Astro.params;
-const gallery = await findBySlug(slug);
+const row = await findBySlug(slug);
 
-// A slug that is not there means a stale bookmark or a swept gallery, and the
-// list of what does exist answers both.
-if (!gallery) {
+// A slug that is not there means a stale bookmark or a gallery the nightly
+// sweep has taken, and the list of what does exist answers both.
+if (!row) {
   return Astro.redirect('/admin');
 }
+
+// Issuing a new password is the one thing on this page that is still a form
+// POST rather than a fetch: it has to keep working if the island never
+// hydrates, since a gallery whose password cannot be read is one nobody can
+// open. Post/Redirect/Get, so refreshing does not mint a third password after
+// she has copied the second.
+if (Astro.request.method === 'POST') {
+  await setPassword(slug, generatePassword());
+  return Astro.redirect(galleryAdminPath(slug), 303);
+}
+
+const gallery = describeGallery(row);
+const password = readPassword(row);
 
 let photos = [];
 try {
   photos = (await readManifest(slug)).photos ?? [];
 } catch {
-  // No manifest yet: the worker has not finished, or there is nothing to show.
-  // The status line below says which.
+  // No manifest yet: the worker has not finished, or nothing has been uploaded.
+  // The editor's own note says which; this page just has no grid to draw.
 }
-
-const expired = isExpired(gallery);
-const password = readPassword(gallery);
-const shareUrl = galleryShareUrl(slug);
-
-const dateLabel = gallery.shootDate
-  ? new Date(gallery.shootDate).toLocaleDateString('pl-PL', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    })
-  : null;
-
-const STATUS_NOTE: Record<string, string> = {
-  preparing: 'Zdjęcia jeszcze się przetwarzają. Klient widzi na razie informację, że galeria się przygotowuje.',
-  failed: 'Coś się nie udało przy przygotowaniu zdjęć. Otwórz „Edytuj” i wyślij je jeszcze raz.',
-  zip_unavailable: 'Paczka ZIP powstanie dopiero przy pobieraniu — na serwerze jest mało miejsca.',
-};
 ---
 
 <BaseLayout
@@ -72,175 +75,44 @@ const STATUS_NOTE: Record<string, string> = {
   wide={true}
   crumbs={[{ label: 'Galeria', href: '/admin' }, { label: gallery.clientName }]}
 >
-  <header class="head">
-    <div>
-      <h1>{gallery.clientName}</h1>
-      {dateLabel && <p class="date">{dateLabel}</p>}
-    </div>
-    <nav class="head-links">
-      {/* Only the two things she can do to this gallery -- the way back to the
-          list is the breadcrumb in the header now. Deleting goes to the same
-          confirmation screen the list uses: the originals go with it, and that
-          decision is not one to make from a hover. */}
-      <a class="act" href={galleryEditPath(slug)}>Edytuj</a>
-      <a class="act danger" href={`${galleryEditPath(slug)}/usun`}>Usuń</a>
-    </nav>
-  </header>
+  <GalleryEditor
+    client:load
+    gallery={gallery}
+    password={password}
+    expiryChoices={EXPIRY_CHOICES}
+    defaultExpiryDays={DEFAULT_EXPIRY_DAYS}
+    deletePath={galleryDeletePath(slug)}
+  />
 
   {
-    expired && (
-      <p class="warn" role="alert">
-        Termin minął — klient tej galerii już nie otworzy. Ty widzisz ją dopóki
-        nocne porządkowanie jej nie usunie. Żeby znów działała, ustaw nowy termin
-        w „Edytuj”.
-      </p>
-    )
-  }
-
-  {/* The link and the code, on the screen she is most likely to have open when
-      a client writes "what was the password again?". */}
-  <section class="access" id="access">
-    <div>
-      <p class="access-label">Link dla klienta</p>
-      <p class="access-value">{shareUrl}</p>
-    </div>
-    <div>
-      <p class="access-label">Hasło</p>
-      {
-        password ? (
-          <p class="access-value password">{password}</p>
-        ) : (
-          <p class="access-value muted">
-            Ta galeria powstała, zanim hasła dało się odczytać.{' '}
-            <a href={galleryEditPath(slug)}>Ustaw nowe</a>.
-          </p>
-        )
-      }
-    </div>
-  </section>
-
-  {
-    photos.length === 0 ? (
-      <p class="empty">
-        {STATUS_NOTE[gallery.status] ?? 'W tej galerii nie ma jeszcze żadnego zdjęcia.'}
-      </p>
-    ) : (
-      <>
-        <div class="bar">
-          <p class="count">{photos.length} zdjęć</p>
+    photos.length > 0 && (
+      <section class="photos">
+        <div class="photos-head">
+          <h2>{photoCount(photos.length)}</h2>
           <a class="download" href={`/g/${slug}/zip`}>
             Pobierz wszystkie
           </a>
         </div>
 
-        <GalleryGrid slug={gallery.slug} count={photos.length} />
+        <GalleryGrid slug={row.slug} count={photos.length} />
         <Lightbox />
-      </>
+      </section>
     )
   }
 </BaseLayout>
 
-{/* The copy button is added by this script rather than rendered above, so a
-    page without JavaScript shows no button that would do nothing. The link and
-    the password are on screen either way.
-
-    The link alone, never link-and-password together: that would put the key in
-    the same message as the door, and separating them is the entire point of a
-    gallery having a password. */}
-<script is:inline define:vars={{ shareUrl }}>
-  const target = document.getElementById('access');
-  if (target && navigator.clipboard) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'copy';
-    button.textContent = 'Kopiuj link';
-    button.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        button.textContent = 'Skopiowane ✓';
-        setTimeout(() => {
-          button.textContent = 'Kopiuj link';
-        }, 2500);
-      } catch {
-        // Clipboard access can be refused; the link is readable on screen.
-      }
-    });
-    target.append(button);
-  }
-</script>
-
 <style>
-  .head {
-    display: flex; flex-wrap: wrap; align-items: baseline;
-    justify-content: space-between; gap: 1rem; margin-bottom: 1.6rem;
-  }
-  .head h1 { margin: 0 0 0.15em; }
-  .date {
-    margin: 0; color: var(--tekst-jasny); font-size: 0.85rem;
-    letter-spacing: 0.12em; text-transform: uppercase;
-  }
-  .head-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+  .photos { margin-top: 2rem; }
 
-  .act {
-    font-family: var(--body); font-size: 0.78rem; letter-spacing: 0.12em;
-    text-transform: uppercase; padding: 0.85em 1.5em; border-radius: 3px;
-    border: 1px solid var(--taupe); background: transparent;
-    color: var(--tekst); text-decoration: none; line-height: 1.2;
-    transition: background 0.25s, border-color 0.25s, color 0.25s;
-  }
-  .act:hover { background: var(--piaskowy); border-color: var(--piaskowy); }
-
-  /* Outlined rather than filled -- on a page she opens to look at photos, the
-     control that destroys them should be unmistakable without being the first
-     thing the eye lands on -- but outlined in the full red, not a tint of it.
-     The same red as the confirmation screen it leads to, which it fills with
-     on hover. */
-  .act.danger { color: var(--czerwien); border-color: var(--czerwien); }
-  .act.danger:hover {
-    background: var(--czerwien); border-color: var(--czerwien); color: var(--biel);
-  }
-
-  .warn {
-    background: #f7ece6; border: 1px solid var(--taupe); border-radius: 4px;
-    padding: 1rem 1.2rem; margin: 0 0 1.6rem; color: var(--glina-ciemna);
-  }
-
-  .access {
-    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1.5rem 2.5rem;
-    background: var(--bez); border: 1px solid var(--piaskowy);
-    border-radius: 4px; padding: 1.2rem 1.4rem; margin-bottom: 2rem;
-  }
-  .access-label {
-    font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
-    color: var(--tekst-jasny); margin: 0 0 0.2rem;
-  }
-  .access-value { margin: 0; word-break: break-all; }
-  .access-value.password {
-    font-size: 1.5rem; letter-spacing: 0.3em; color: var(--glina-ciemna);
-  }
-  .access-value.muted { color: var(--tekst-jasny); font-size: 0.9rem; }
-</style>
-
-<style is:global>
-  /* Appended by the script above, so it cannot be styled by a scoped rule. */
-  #access .copy {
-    font-family: var(--body); font-size: 0.78rem; letter-spacing: 0.12em;
-    text-transform: uppercase; padding: 0.9em 1.5em; border: 1px solid var(--taupe);
-    border-radius: 3px; background: transparent; color: var(--glina-ciemna);
-    cursor: pointer; margin-left: auto; transition: background 0.25s;
-  }
-  #access .copy:hover { background: var(--piaskowy); color: var(--tekst); }
-</style>
-
-<style>
-  .bar {
+  .photos-head {
     display: flex; flex-wrap: wrap; align-items: center;
     justify-content: space-between; gap: 1rem; margin-bottom: 1.2rem;
   }
-  .count {
-    margin: 0; font-size: 0.78rem; letter-spacing: 0.12em;
-    text-transform: uppercase; color: var(--tekst-jasny);
+  .photos-head h2 {
+    margin: 0; font-family: var(--body); font-size: 0.72rem;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--tekst-jasny);
   }
+
   .download {
     font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
     text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
@@ -248,6 +120,4 @@ const STATUS_NOTE: Record<string, string> = {
     transition: background 0.25s;
   }
   .download:hover { background: var(--glina-ciemna); }
-
-  .empty { color: var(--tekst-jasny); padding: 2.5rem 0; text-align: center; }
 </style>
