@@ -190,8 +190,11 @@
   margin: 0 0 0.3rem;
 }
 
+/* Read off a screen and checked against what she has pasted into a message, so
+   it is set close to the password beside it rather than at body size. */
 .finish-link {
-  font-size: 1.05rem;
+  font-size: 1.35rem;
+  line-height: 1.5;
   margin: 0 0 1.1rem;
   word-break: break-all;
   color: var(--tekst);
