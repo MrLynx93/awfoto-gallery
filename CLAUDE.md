@@ -427,9 +427,15 @@ worth the complexity here.
 
 - **Database** — MySQL, via `mysql2`. The gallery's name column is
   `session_name`: what she types is a session — often a couple, sometimes
-  "Chrzciny Zosi" — and only sometimes anybody's name. It was `client_name`
-  until the schema was rewritten in place; there is no migration for the rename,
-  so a database carrying the old column has to be dropped rather than upgraded.
+  "Chrzciny Zosi" — and only sometimes anybody's name.
+
+  It was `client_name`, and the rename is worth knowing about because it left
+  two shapes of database in the world: `001_initial.sql` was rewritten in place
+  to say `session_name`, so anything created since has the new name, while the
+  deployed one still had the old. `004_session_name.sql` renames it with a
+  `CHANGE` guarded on `information_schema` — a no-op where 001 already did it.
+  Nothing has to be dropped, and no data moves: a `CHANGE` renames the column
+  under the rows it already has.
 - **Password storage** — `node:crypto` scrypt, `N=16384, r=8, p=1`, 16-byte salt,
   `timingSafeEqual` on compare. Same helper for the gallery password and the admin
   password.
