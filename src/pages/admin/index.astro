@@ -74,8 +74,12 @@ const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
       <table>
         <thead>
           <tr>
-            <th>Klient</th>
+            {/* The row is a session; the client's name is how she recognises
+                which one, and the date is just its date. Naming the first
+                column "Klient" made the second one sound like a different
+                thing entirely. */}
             <th>Sesja</th>
+            <th>Data</th>
             <th>Hasło</th>
             <th>Zdjęcia</th>
             <th>Rozmiar</th>
