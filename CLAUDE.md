@@ -426,16 +426,32 @@ worth the complexity here.
 ## Resolved (was: open questions)
 
 - **Database** — MySQL, via `mysql2`. The gallery's name column is
-  `session_name`: what she types is a session — often a couple, sometimes
-  "Chrzciny Zosi" — and only sometimes anybody's name.
+  `session_name` and its date column is `session_date`: what she types is a
+  session — often a couple, sometimes "Chrzciny Zosi" — and only sometimes
+  anybody's name, and the date is the session's, not necessarily a shoot in the
+  old studio sense.
 
-  It was `client_name`, and the rename is worth knowing about because it left
-  two shapes of database in the world: `001_initial.sql` was rewritten in place
-  to say `session_name`, so anything created since has the new name, while the
-  deployed one still had the old. `004_session_name.sql` renames it with a
-  `CHANGE` guarded on `information_schema` — a no-op where 001 already did it.
-  Nothing has to be dropped, and no data moves: a `CHANGE` renames the column
-  under the rows it already has.
+  They were `client_name` and `shoot_date`, and the renames are worth knowing
+  about because each left two shapes of database in the world: `001_initial.sql`
+  was rewritten in place to say the new names, so anything created since has
+  them, while the deployed database still had the old ones. `004_session_name.sql`
+  and `005_session_date.sql` each rename their column with a `CHANGE` guarded on
+  `information_schema` — a no-op wherever 001 already did it. Nothing has to be
+  dropped, and no data moves: a `CHANGE` renames the column under the rows it
+  already has.
+
+  **`migrate()` in `server/db.js` also checksums every applied file**, which is
+  what those two renames exposed the need for: editing `001_initial.sql` after a
+  database had already run it is exactly the mistake a checksum catches. Every
+  file's hash is recorded in `schema_migrations.checksum` when it is applied; on
+  every later boot the file on disk is re-hashed and compared, and a mismatch is
+  a boot failure naming the file, not a silent divergence to debug later. A row
+  with no recorded checksum — every migration applied before this guard existed
+  — is backfilled from the file as it stands now rather than failed, since there
+  is no historical hash to compare it against; the rule this exists to enforce
+  is about the *next* edit. The practical upshot: once a migration file has run
+  anywhere, it is frozen — fix a mistake in it with a new file, never by editing
+  the one that ran.
 - **Password storage** — `node:crypto` scrypt, `N=16384, r=8, p=1`, 16-byte salt,
   `timingSafeEqual` on compare. Same helper for the gallery password and the admin
   password.
