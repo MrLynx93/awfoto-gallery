@@ -407,8 +407,11 @@
   border-bottom-color: var(--glina);
 }
 
-/* The status lines belong under the whole grid, not squeezed into one cell. */
-.uploader-card .status,
-.uploader-card .errors {
-  display: none;
-}
+/* The status lines belong under the whole grid, not squeezed into one cell --
+   PhotoUploader.tsx portals them to #uploader-feedback, right after the grid,
+   rather than hiding them here with nothing rendered in their place. This
+   used to be that hiding rule; the portal is the follow-through it was
+   waiting on, not a second thing layered on top of it. It stays removed even
+   as a safety net, because the fallback path that renders inline exists
+   specifically for when the portal target cannot be found -- hiding that
+   fallback's own output would silently recreate the bug it exists to avoid. */

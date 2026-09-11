@@ -13,6 +13,7 @@
  * and errors in plain Polish with a way to try again.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Uppy from '@uppy/core';
 import Tus from '@uppy/tus';
 // @uppy/react v6 is headless -- it exports hooks and primitives, not a
@@ -47,6 +48,23 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
   const [held, setHeld] = useState(false);
 
   const dashboardRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Where the card variant's status and error text actually render.
+   *
+   * The card is sized and shaped like the photographs beside it, and "Wysłano
+   * 800 zdjęć" -- or a list of failures -- does not fit inside that without
+   * either breaking the grid's row height or being truncated to nothing. So
+   * for a card, this component's own DOM position is the drop zone only; the
+   * text below is portalled to a plain div admin/g/[slug].astro places after
+   * the whole grid, which is where it was always meant to be. The panel
+   * variant has no such constraint and keeps rendering inline, below.
+   */
+  const [feedbackTarget, setFeedbackTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (variant !== 'card') return;
+    setFeedbackTarget(document.getElementById('uploader-feedback'));
+  }, [variant]);
 
   const uppy = useMemo(
     () =>
@@ -174,8 +192,8 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
     return () => window.removeEventListener('beforeunload', warn);
   }, []);
 
-  return (
-    <div className={variant === 'card' ? 'uploader uploader-card' : 'uploader'}>
+  const feedback = (
+    <>
       {held && (
         <div className="errors" role="alert">
           {/* Usually because the gallery has no name yet -- and then the message
@@ -191,8 +209,6 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
           </button>
         </div>
       )}
-
-      <div className="uploader-zone" ref={dashboardRef} />
 
       {sent > 0 && (
         <p className="status" role="status">
@@ -226,6 +242,18 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
           wysyłanie się zatrzyma i ruszy dalej, gdy go obudzisz.
         </p>
       )}
+    </>
+  );
+
+  return (
+    <div className={variant === 'card' ? 'uploader uploader-card' : 'uploader'}>
+      <div className="uploader-zone" ref={dashboardRef} />
+      {/* Portalled below the whole grid for the card variant, where there is
+          room for "Wysłano 800 zdjęć" or a list of failures; rendered right
+          here for the panel, which already has that room itself. Falls back
+          to rendering inline if the target div is ever missing -- a message
+          in a slightly wrong place beats one that silently never appears. */}
+      {variant === 'card' && feedbackTarget ? createPortal(feedback, feedbackTarget) : feedback}
     </div>
   );
 }

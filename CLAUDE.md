@@ -394,7 +394,23 @@ which would put the key in the same message as the door — then the details, th
 the photos. The drop zone is the **first card in the photo grid**, the same size
 as the photographs beside it, because adding photos belongs among the photos;
 `PhotoUploader.tsx` is that card here and the tall panel on the empty screen,
-where dropping a folder is one of the two ways a gallery gets created. There is no separate edit form and no view/edit pair: she
+where dropping a folder is one of the two ways a gallery gets created.
+
+Uploading to an existing gallery has no on-page confirmation beyond "Wysłano N
+zdjęć. Odśwież stronę, żeby je zobaczyć" — the same message the empty screen's
+panel shows, just **portalled** out of the card. A card is sized like the
+photographs beside it, with no room for that sentence at wedding scale or for a
+list of failed files, so `PhotoUploader.tsx` renders that text into a plain
+`#uploader-feedback` div the admin page places right after the grid, via
+`createPortal`, rather than inside its own DOM position. This replaces a
+version that hid the same text outright with `display: none` and rendered
+nothing in its place — the upload itself worked (the tus route, the worker
+spawn, all of it), but she had no way to tell, since the one thing on the
+screen that would have told her had no visible form. If the target div is ever
+missing, the text renders inline in the card instead of vanishing again — a
+message in a slightly wrong place beats the bug this replaced.
+
+There is no separate edit form and no view/edit pair: she
 is the only person who opens either, she is always allowed to change what she is
 looking at, and "which of the two am I on?" is not a question the panel should
 ask. Nothing on that page is a second gallery for the client she says she forgot

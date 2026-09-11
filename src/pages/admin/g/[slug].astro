@@ -190,6 +190,11 @@ try {
           grid's way so the uploader itself is the cell. */}
       <PhotoUploader client:load slug={row.slug} variant="card" slot="lead" />
     </GalleryGrid>
+    {/* Where PhotoUploader portals "Wysłano N zdjęć" and any failure list --
+        the card above it is sized like the photographs beside it, with no room
+        for either. Always present, even before a first upload, since the
+        portal target has to exist before the island can find it. */}
+    <div id="uploader-feedback"></div>
     {photos.length > 0 && <Lightbox />}
   </section>
 </BaseLayout>
