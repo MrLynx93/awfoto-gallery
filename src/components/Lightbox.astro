@@ -115,16 +115,17 @@
     height: 20px;
   }
 
+  /* Both top-right, download beside close rather than mirrored across the
+     screen from it -- the two things this corner offers to do with the
+     photo, one after the other, not one per side as if they were opposites. */
   .lightbox-close {
     top: 1rem;
     right: 1rem;
     z-index: 2;
   }
-  /* Mirrors the close button, so the one other thing this screen lets her do
-     is exactly as easy to find. */
   .lightbox-download {
     top: 1rem;
-    left: 1rem;
+    right: calc(1rem + 48px + 0.6rem);
     z-index: 2;
   }
   .lightbox-prev {
