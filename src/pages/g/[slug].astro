@@ -61,7 +61,12 @@ if (Astro.request.method === 'POST' && !authorised) {
     if (gallery && !expired && (await verify(submitted, gallery.passwordHash))) {
       await rateLimit.clear(slug, ip);
       Astro.cookies.set(cookieName, issueGallery(slug), cookieOptions(GALLERY_TTL));
-      authorised = true;
+      // Post/redirect/get: this request is still the POST, and rendering the
+      // grid directly in answer to it is what made a later reload trigger the
+      // browser's own "resend the form data?" prompt -- the cookie is already
+      // set, so a plain redirect to the same URL is enough, and everything
+      // after this point in the file only ever runs on a GET again.
+      return Astro.redirect(`/g/${slug}`, 303);
     } else {
       await rateLimit.record(slug, ip);
       wrongPassword = true;
