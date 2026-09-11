@@ -11,31 +11,27 @@
  * The `data-lightbox-index` and `#photo-grid` contract is kept exactly, so
  * Lightbox.astro works unchanged.
  *
- * ## Why the rows are justified rather than square
+ * ## Masonry, not justified rows
  *
- * A square tile crops every frame to a square, which is the one shape a
- * photographer never delivers: a portrait is cut off at the top and bottom and
- * a panorama loses its ends. So each photo keeps its own proportions, and the
- * grid packs them into rows of equal height -- the justified layout Flickr and
- * Google Photos use.
+ * This used to pack photos into justified rows -- Flickr/Google Photos style,
+ * every line filling the width at one shared height. That made photos bigger
+ * than a plain square grid, but a row is still a row: a portrait next to a
+ * panorama meant the whole line was capped by whichever one fit last, and
+ * "photos should be bigger, and they don't have to share a height" is asking
+ * for the row itself to go.
  *
- * That packing is done by flex wrapping, not by JavaScript. Each tile asks for
- * a width proportional to its aspect ratio (`flex-basis: ar × --row`) and grows
- * by the same ratio, so however many tiles land on a line, their widths stay
- * proportional to their ratios -- which is exactly the condition for their
- * heights to come out equal. Deciding where to break a line is then the
- * browser's own wrapping, at whatever width the viewport happens to be, with no
- * layout pass of ours and nothing to recompute on resize.
+ * So this is a CSS multi-column layout instead: fixed-width columns, each
+ * photo shown at its own true aspect ratio with **no cropping at all** --
+ * there is no row for it to match anymore, so nothing forces one. `columns`
+ * plus `break-inside: avoid` is the whole layout; the browser decides how
+ * many columns fit and stacks each photo under the shortest one, same as it
+ * decided line breaks before. Nothing here measures or recomputes on resize.
  *
- * The one place it needs help is the last line, which has too few tiles to fill
- * the width and would stretch them to an odd height. The `::after` absorbs that
- * leftover space, so the last line keeps the target height and sits left --
- * again, the behaviour of every justified gallery.
- *
- * (A true "puzzle" packing -- the linear-partition algorithm, which picks the
- * breaks that minimise the deviation from the target height -- fits marginally
- * better, and needs per-viewport measurement and a script. Not worth it for a
- * grid the browser can justify on its own.)
+ * The trade a masonry column always makes: reading order runs down one
+ * column before starting the next, not left-to-right across a row. A
+ * justified row keeps chronological order strictly left-to-right; a column
+ * layout does not. That is the cost of letting heights differ instead of
+ * matching them, and it is what was asked for.
  */
 interface PhotoMeta {
   /** From the manifest. Null for a photo the worker could not measure. */
@@ -59,54 +55,30 @@ const { slug, photos, deletable = false } = Astro.props;
 const count = photos.length;
 
 /**
- * A ratio is clamped before it reaches the layout. Left alone, one 6:1
- * panorama becomes a letterbox slot the rest of its row has to match, and a
- * scan of a 4×5 plate towers over its neighbours. Inside these bounds a photo
- * is shown as shot; outside them `object-fit: cover` trims the excess, which
- * for those two cases is the lesser harm.
- */
-const MIN_RATIO = 0.6;
-const MAX_RATIO = 2.4;
-
-/**
- * What to assume when the manifest has no dimensions. Landscape, because most
- * of a session is, and because it is only reached by galleries prepared before
- * the worker started recording them -- it fills those in on its next run.
+ * What to assume when the manifest has no dimensions -- only reserves space
+ * before the image loads, so a slightly-off guess costs a moment of layout
+ * shift and nothing else. Landscape, because most of a session is, and this
+ * is only ever reached by a gallery prepared before the worker started
+ * recording proportions.
  */
 const FALLBACK_RATIO = 1.5;
 
+/**
+ * Unclamped, deliberately: there is no row for an extreme ratio to break
+ * anymore, and cropping is gone along with it, so clamping would only mean
+ * stretching a photo to a ratio it was never shot at. Shown as tall or as
+ * wide as it actually is, always.
+ */
 function ratioOf(photo: PhotoMeta): number {
   const width = Number(photo?.width);
   const height = Number(photo?.height);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     return FALLBACK_RATIO;
   }
-  return Math.min(MAX_RATIO, Math.max(MIN_RATIO, width / height));
+  return width / height;
 }
 
-/**
- * What to tell the browser a tile will be, so it picks the right preview.
- *
- * With uniform tiles one `sizes` covered every photo. Justified rows do not
- * work that way: on one line a panorama can be three times the width of the
- * portrait beside it, and a single average would leave the 500 px thumbnail
- * stretched across the widest tiles on a screen that is not retina. Each photo
- * gets its own estimate instead, from the two things that decide its width --
- * its ratio, and the row height, which is a fifth of a container that is itself
- * most of the viewport (hence 18vw) until the clamp stops it at 17rem.
- *
- * An estimate, not a measurement: it only has to land on the right side of the
- * 500 px boundary, and erring high costs a larger file rather than a soft one.
- */
-function sizesFor(ratio: number): string {
-  const cap = Math.round(ratio * 17 * 16);
-  return `(max-width: 700px) 50vw, min(${(ratio * 18).toFixed(1)}vw, ${cap}px)`;
-}
-
-const tiles = photos.map((photo, index) => {
-  const ratio = ratioOf(photo);
-  return { index, ratio: ratio.toFixed(3), sizes: sizesFor(ratio) };
-});
+const tiles = photos.map((photo, index) => ({ index, ratio: ratioOf(photo).toFixed(3) }));
 ---
 
 <div class="grid-frame">
@@ -120,7 +92,7 @@ const tiles = photos.map((photo, index) => {
     <slot name="lead" />
 
     {
-      tiles.map(({ index, ratio, sizes }) => (
+      tiles.map(({ index, ratio }) => (
         <div class="tile" style={`--ar: ${ratio}`}>
           <button
             class="photo"
@@ -131,7 +103,7 @@ const tiles = photos.map((photo, index) => {
             <img
               src={`/g/${slug}/p/${index}/thumb.jpg`}
               srcset={`/g/${slug}/p/${index}/thumb.jpg 500w, /g/${slug}/p/${index}/large.jpg 2048w`}
-              sizes={sizes}
+              sizes="(max-width: 700px) 100vw, (max-width: 1000px) 50vw, min(26vw, 24rem)"
               alt={`Zdjęcie ${index + 1}`}
               loading={index < 4 ? 'eager' : 'lazy'}
               decoding="async"
@@ -162,53 +134,52 @@ const tiles = photos.map((photo, index) => {
   /* Exists to be measured: `cqw` below asks how wide the grid is, and an
      element cannot ask that of itself. The panel's grid sits inside a card and
      the client's fills the page, so the same viewport gives them very different
-     room -- which a `vw` here would miss, sizing the panel's photographs for a
-     width it does not have. */
+     room -- which a `vw` here would miss, sizing the panel's columns for a
+     width they do not have. */
   .grid-frame {
     container-type: inline-size;
   }
 
   .photo-grid {
-    /* The height a row aims for, and the one number that decides how big the
-       photographs are: every width in the layout is derived from it. A fifth of
-       the available width puts three or four on a line, which is the range
-       where the rows come out even -- a line is only stretched by whatever the
-       next photo could not fit into, so the more that land on it the closer it
-       stays to the target. Aiming higher shrinks to two and lets a line of
-       portraits tower; aiming lower makes them small for no gain.
+    /* Gap between columns and, via each tile's own margin below, between
+       photos stacked in the same column -- multi-column layout has no
+       `row-gap` of its own, so the vertical half of this is spent there
+       instead of here. One custom property so the two stay equal. */
+    --gap: clamp(0.5rem, 1.4vw, 1rem);
 
-       The floor holds a phone at two to a line, where a fifth of 350px would
-       be a thumbnail. The ceiling stops a wide monitor from serving 400px-tall
-       photographs off a 2048px preview -- past it the extra room adds photos
-       to the line rather than size to each one. */
-    --row: clamp(6.5rem, 20cqw, 17rem);
-
-    display: flex;
-    flex-wrap: wrap;
-    gap: clamp(0.5rem, 1.4vw, 1rem);
+    /* Column width is the whole lever for "bigger": more of it here is
+       fewer, larger columns; less is more, smaller ones. A quarter of the
+       grid's own width lands on three or four columns at a laptop and one
+       or two on a phone -- noticeably larger per photo than the fifth a
+       justified row spent on a single tile, since a column does not also
+       have to leave room for whatever else shares its line. The floor keeps
+       a phone at something more than a fragment of a photo; the ceiling
+       stops a wide monitor turning a photo into a poster off a 2048px
+       preview. */
+    column-width: clamp(11rem, 26cqw, 24rem);
+    column-gap: var(--gap);
   }
-
-  /* Soaks up the slack on the last line so its tiles keep the target height
-     instead of stretching across the full width. */
-  .photo-grid::after {
-    content: '';
-    flex: 1000000 0 0;
-  }
-
 
   .tile,
   /* The panel's drop zone, slotted in from outside this component -- a
      descendant rather than a child, because Astro wraps an island in
      <astro-island> and `display: contents` hides it from the layout without
-     removing it from the tree. No --ar of its own: the fallback below shapes it
-     like a landscape frame, which is the shape of most of what lands in it. */
+     removing it from the tree. */
   .photo-grid :global(.uploader-card) {
-    position: relative;
-    aspect-ratio: var(--ar, 1.5);
-    /* Width proportional to the ratio, both at rest and when the line is
-       justified -- which is what makes the heights in a line come out equal. */
-    flex: var(--ar, 1.5) 1 calc(var(--ar, 1.5) * var(--row));
-    min-width: 0;
+    /* Multi-column layout otherwise feels free to split one photo's box
+       across the bottom of one column and the top of the next. */
+    break-inside: avoid;
+    margin-bottom: var(--gap);
+  }
+
+  /* The drop zone is not a photo and carries no --ar of its own, so it needs
+     an explicit shape rather than inheriting one -- landscape, the same
+     fallback a photo with no recorded dimensions gets. Uppy's Dashboard
+     fills it via `height: 100%` (editor.css), which needs this box to have a
+     real height to be a percentage of. */
+  .photo-grid :global(.uploader-card) {
+    aspect-ratio: 1.5;
+    height: auto;
   }
 
   /* Small, in the corner, and quiet until she goes near it: this sits on top of
@@ -252,6 +223,13 @@ const tiles = photos.map((photo, index) => {
     stroke-linecap: round;
   }
 
+  .tile {
+    /* Multi-column layout lays tiles out as if the column were a page, top
+       to bottom -- `position: relative` is what lets the × still pin itself
+       to its own photo's corner rather than the column's. */
+    position: relative;
+  }
+
   .photo {
     padding: 0;
     /* A hairline, so a light photograph has an edge rather than bleeding into
@@ -263,14 +241,15 @@ const tiles = photos.map((photo, index) => {
     border-radius: 3px;
     display: block;
     width: 100%;
-    /* The tile is stretched to its line's height; filling it keeps a row's
-       bottom edge straight however the ratios round. */
-    height: 100%;
   }
   .photo img {
+    /* The aspect-ratio reserves the photo's true shape before it loads --
+       there is no cropping left to do, so the image is simply shown at the
+       width its column gives it and whatever height that ratio implies. */
+    display: block;
     width: 100%;
-    height: 100%;
-    object-fit: cover;
+    height: auto;
+    aspect-ratio: var(--ar, 1.5);
     transition: transform 0.6s cubic-bezier(0.2, 0, 0.2, 1);
   }
   .photo:hover img {

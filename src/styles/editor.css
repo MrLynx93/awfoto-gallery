@@ -348,9 +348,9 @@
   display: contents;
 }
 
-/* The shape is the grid's business -- it gives the card the same ratio and
-   flex sizing as the photographs beside it, so it sits in a justified row
-   rather than breaking it. See GalleryGrid.astro. */
+/* The shape is the grid's business -- it gives the card a column width and a
+   landscape aspect-ratio to match, and keeps it from being split across two
+   columns. See GalleryGrid.astro. */
 .uploader-card {
   border: 1px dashed var(--taupe);
   border-radius: 3px;

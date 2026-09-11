@@ -320,73 +320,70 @@ question is still asked. Reached that way from a gallery it carries
 itself needs no script beyond `showModal()` — Escape and the backdrop close it,
 and "no" is a `formmethod="dialog"` submit.
 
-## The grid is justified, not square
+## The grid is masonry, not square — and not justified rows either
 
 Both grids — the client's and the panel's — are `GalleryGrid.astro`, and no
 photograph in either is cropped to a square. A square tile is the one shape a
 photographer never delivers: it cuts a portrait off at the top and bottom and
-takes the ends off a panorama. So every photo keeps its own proportions and the
-rows are justified, each line filling the width at a single height, the way
-Flickr and Google Photos lay a set out.
+takes the ends off a panorama. Every photo keeps its own proportions.
 
-The packing is flex wrapping, not JavaScript. A tile asks for a width
-proportional to its aspect ratio (`flex-basis: ar × --row`) and grows by the
-same ratio, so whatever lands on a line keeps widths proportional to ratios —
-which is exactly the condition for the heights on that line to come out equal.
-Where a line breaks is then the browser's own wrapping, at whatever width the
-viewport happens to be, with nothing to measure and nothing to recompute on
-resize. The `::after` absorbs the slack on the last line, which otherwise has
-too few tiles and would stretch them.
+This used to mean **justified rows** — Flickr/Google Photos style, every line
+filling the width at one shared height. That made photos bigger than a plain
+square grid, but a row is still a row: the whole line was capped by whichever
+photo fit last, and asking for photos to be bigger still, with no requirement
+that they share a height, is asking for the row itself to go. So this is now a
+**CSS multi-column layout** — `columns` plus `break-inside: avoid` on each
+tile, nothing else. The browser decides how many fixed-width columns fit and
+stacks each photo under the shortest one, the same way it used to decide line
+breaks: no measuring, nothing recomputed on resize, no JavaScript.
 
-`--row` — the height a line aims for — is the only number to turn, and it is
-what decides how big the photographs are: every width in the layout is derived
-from it. It is a fifth of the grid's own width (`20cqw`, floored at 6.5rem and
-capped at 17rem), which puts three or four on a line at any size — the range
-where the rows come out even, since a line is only stretched by what the next
-photo could not fit into. Aiming higher drops to two and lets a line of
-portraits tower; aiming lower makes the photographs small for no gain. Past the
-17rem cap the extra room adds photos to a line rather than size to each one,
-which is the right trade against a 2048px preview.
+**No cropping at all**, for the same reason: there is no row left for an
+extreme ratio to break, so nothing forces `object-fit: cover` anymore. A photo
+renders at its own true `width/height`, unclamped — MIN_RATIO/MAX_RATIO existed
+under justified rows to stop one extreme ratio from dominating a line; a
+masonry column has no line to dominate, so the clamp is gone and every photo
+is shown exactly as shot.
 
-**Container units, not `vw`** — hence the `.grid-frame` wrapper, which exists
-only to be measured (an element cannot query itself). The panel's grid sits
-inside a card and the client's fills the page, so at one viewport width they
-have very different room; a `vw` here would size the panel's photographs for a
-width they do not have, and drop it to two a line.
+`column-width: clamp(11rem, 26cqw, 24rem)` on `.photo-grid` is the whole
+sizing lever, on the same reasoning `--row` used to carry: a quarter of the
+grid's own width lands on three or four columns at a laptop and one or two on
+a phone, each noticeably bigger than a justified row's tiles were, since a
+column does not also have to leave room for whatever else shared its line. At
+the narrowest phones the floor forces a single, full-width column — the
+biggest a photo can be shown. The `.grid-frame` wrapper and its `cqw` units are
+unchanged from before: the panel's grid sits inside a card and the client's
+fills the page, so the same viewport gives them different room, which is why
+this is a container query and not `vw`. `width="photos"` on the client's
+`BaseLayout` (1800px, not the site's 1240px) is still the other half of
+"bigger" — more columns of room to be generous with.
 
-The room itself is the other half of "bigger". The client's gallery is a page
-of photographs and nothing else, so it takes `width="photos"` from BaseLayout —
-1800px rather than the site's 1240px measure, which is also where the header's
-own wordmark sits at that width. The panel keeps `width="panel"`: a form field
-or a table row gains nothing from being 1800px wide, and its photographs are
-already bigger through `--row`.
+`sizes` is one shared estimate now rather than one per photo: every tile in a
+masonry layout renders at the same width (its column's), only the height
+varies, so there is no per-ratio case to cover the way a justified row's
+mixed-width line needed. `(max-width: 700px) 100vw, (max-width: 1000px) 50vw,
+min(26vw, 24rem)` tracks the `column-width` clamp closely enough that erring
+high, same as before, costs a larger file rather than a soft photograph.
 
-Each photo carries **its own `sizes`**, computed from its ratio, rather than the
-one average a uniform grid could use — on a justified line a panorama can be
-three times the width of the portrait beside it, and a single figure leaves the
-500px thumbnail stretched across the widest tiles on a screen that is not
-retina. The estimate only has to land on the right side of that 500px boundary;
-erring high costs a larger file rather than a soft photograph.
+**The trade every masonry layout makes, including this one:** reading order
+runs down one column before starting the next, not left-to-right across a
+row. A justified row kept a wedding's photos in strict chronological order;
+a column layout does not. That is the cost of letting heights differ instead
+of matching them, and it is the trade that was asked for.
 
-The alternative is the linear-partition algorithm the same galleries use, which
-picks the line breaks that minimise the deviation from the target height. It
-fits marginally better and costs a measuring pass per viewport and a script.
-Not worth it for something the browser justifies on its own.
-
-**The proportions come from the manifest**, so `width` and `height` in
-`manifest.json` are now load-bearing rather than decoration. Two things follow:
+**The proportions still come from the manifest**, so `width` and `height` in
+`manifest.json` stay load-bearing. Two things about them still apply:
 
 - They are measured **on the thumbnail, not on the original**. The resize has
   already applied `-auto-orient`, so a portrait frame stored landscape with an
   EXIF rotation reports the shape the grid will actually draw — which
-  `identify` on the original gets backwards, tilting every such photo in its
-  row. It is also cheaper than reading a 45 MP file twice.
-- A manifest written before this change has `null` for both on any photo whose
-  derivatives an earlier run reused. The grid assumes 3:2 where it has nothing,
-  and the worker repairs it: `backfillDimensions()` runs before the "nothing to
-  do" return, measures the thumbnails that already exist, and rewrites the
-  manifest without re-encoding anything or touching the ZIP. Once per gallery,
-  then never again.
+  `identify` on the original gets backwards, tilting every such photo. It is
+  also cheaper than reading a 45 MP file twice.
+- A manifest written before dimensions were tracked has `null` for both on any
+  photo whose derivatives an earlier run reused. The grid assumes 3:2 where it
+  has nothing, and the worker repairs it: `backfillDimensions()` runs before
+  the "nothing to do" return, measures the thumbnails that already exist, and
+  rewrites the manifest without re-encoding anything or touching the ZIP. Once
+  per gallery, then never again.
 
 ## The galleries list gives the name column the room
 
