@@ -99,14 +99,19 @@ const gallery = describeGallery(row);
 const password = readPassword(row);
 const justRemoved = Astro.url.searchParams.has('zdjecie');
 
-/** What the client is seeing right now, in her words rather than the row's. */
+/**
+ * What the client is seeing right now, in her words rather than the row's.
+ * `preparing` is handled separately, below -- it is the one status this page
+ * expects her to come back to, so it gets the spinner and the reminder to
+ * reload rather than a plain sentence.
+ */
 const STATUS_NOTE: Record<string, string> = {
-  preparing: 'Przygotowuję zdjęcia. Klient widzi na razie informację, że galeria się szykuje.',
   ready: 'Galeria jest gotowa — klient widzi zdjęcia i może pobrać wszystkie naraz.',
   failed: 'Coś się nie udało przy przygotowaniu zdjęć. Wyślij je jeszcze raz.',
   zip_unavailable:
     'Galeria jest gotowa. Paczka ZIP powstanie dopiero przy pobieraniu, bo na serwerze jest mało miejsca.',
 };
+const isPreparing = gallery.status === 'preparing';
 
 let photos = [];
 try {
@@ -152,14 +157,31 @@ try {
     </h2>
 
     {/* What the client is seeing right now, next to the photos it is about --
-        rather than tucked under the link, which is not what it describes. */}
-    <p class="state">{STATUS_NOTE[gallery.status] ?? 'Link działa od razu.'}</p>
-
-    {justRemoved && (
-      <p class="removed" role="status">
-        Zdjęcie zostało usunięte. Paczka do pobrania powstaje od nowa — przez
-        chwilę klient zobaczy informację, że galeria się przygotowuje.
+        rather than tucked under the link, which is not what it describes.
+        `preparing` used to be two boxes stacked here: this note, and, right
+        after a delete, a second one repeating the same fact in different
+        words. One box now covers both, because they were never two things --
+        removing a photo just puts the gallery back into this same status, so
+        there is one thing happening and it deserves one thing said about it.
+        The spinner is what makes it obviously not-finished rather than stuck,
+        and the reload reminder is the one action this page cannot take for
+        her: nothing here polls, so nothing else tells her when to look again. */}
+    {isPreparing ? (
+      <p class="preparing" role="status">
+        <svg class="warning-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3.6 21.4 20H2.6L12 3.6Z" />
+          <path d="M12 9.6v4.4" />
+          <circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" />
+        </svg>
+        <span class="spinner" aria-hidden="true"></span>
+        <span>
+          {justRemoved
+            ? 'Zdjęcie zostało usunięte, więc paczka do pobrania przygotowuje się od nowa. Klient na razie widzi informację, że galeria się szykuje — odśwież stronę, żeby sprawdzić, czy jest już gotowa.'
+            : 'Przygotowuję zdjęcia — klient na razie widzi informację, że galeria się szykuje. Odśwież stronę, żeby sprawdzić, czy jest już gotowa.'}
+        </span>
       </p>
+    ) : (
+      <p class="state">{STATUS_NOTE[gallery.status] ?? 'Link działa od razu.'}</p>
     )}
 
     <GalleryGrid slug={row.slug} photos={photos} deletable={true}>
@@ -177,9 +199,51 @@ try {
      of the cards above rather than a child of the island that draws them. */
   .photos { margin-top: 2rem; }
 
-  .removed {
-    background: #e7ece2; border: 1px solid #ccd6c4; border-radius: 4px;
-    padding: 0.9rem 1.2rem; margin: 0 0 1.2rem; color: #55604a;
+  /* Amber rather than the destructive red of the delete warning below --
+     nothing has gone wrong here, something is just not finished yet. */
+  .preparing {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    background: #f6e9c9;
+    border: 1px solid #ddc07f;
+    border-radius: 4px;
+    padding: 0.9rem 1.2rem;
+    margin: 0 0 1.2rem;
+    color: #7c5e22;
     font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .warning-icon,
+  .spinner {
+    flex: none;
+    margin-top: 0.15rem;
+  }
+  .warning-icon {
+    width: 1.15rem;
+    height: 1.15rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .spinner {
+    width: 0.9rem;
+    height: 0.9rem;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  /* A spinner is the one animation on this page that never stops on its own,
+     which is exactly the kind most worth slowing down rather than freezing --
+     a static half-ring reads as broken, not as respecting the preference. */
+  @media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 2.4s; }
   }
 </style>
