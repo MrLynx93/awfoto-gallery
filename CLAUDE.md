@@ -149,6 +149,20 @@ a safety net after a crash or a restart. Use **`lockf(1)`** — it is base syste
 so it cannot vanish under a package change. (`flock` also happens to be
 installed here, from a port; don't depend on it.)
 
+**"Preparing" has a real progress bar on the admin page**, not just a spinner.
+`server/storage.js` exports `progress(slug)`, which reads it straight off
+disk rather than from anything the worker writes: `photo_count` and the
+manifest are both written once, at the very end, so there is nowhere else
+this number lives while the batch is still running. It counts `*-large.jpg`
+files in `previews/` against image files in `originals/` — `large.jpg` is the
+second and last file `makeDerivatives()` writes per photo, so a count of
+those is a count of *finished* photos, never one mid-resize. The admin page
+also reloads itself every 4 seconds while `preparing` is showing (a plain
+`setTimeout(() => location.reload(), 4000)`, progressive enhancement only —
+the banner's own text still says to reload by hand, for a browser with
+JavaScript off), so the bar moves on its own and the moment the worker
+finishes, a reload lands on the finished page instead of this one.
+
 ## Download path
 
 **Nothing is reachable without going through Node.** There is no public file

@@ -18,7 +18,7 @@
  * gallery, when it expires — and the manifest carries the per-photo detail.
  */
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { STORAGE_ROOT } from './config.js';
 
 export const galleriesRoot = path.join(STORAGE_ROOT, 'galleries');
@@ -69,4 +69,31 @@ export function originalPath(id, filename) {
 
 export async function readManifest(id) {
   return JSON.parse(await readFile(manifestPath(id), 'utf8'));
+}
+
+/** The same filter worker.js uses to decide what counts as a photo at all. */
+const ORIGINAL_PATTERN = /\.(jpe?g|png)$/i;
+
+/**
+ * How far the worker has gotten on a gallery that has not finished yet.
+ *
+ * Read straight off disk rather than the database, because the worker only
+ * writes `photo_count` and the manifest once the whole batch is done --
+ * there is nowhere else this number lives while `preparing` is still true.
+ * `large.jpg` is the second and last file `makeDerivatives()` writes for a
+ * photo, so counting those counts photos it has actually finished, not ones
+ * still mid-resize with only a `thumb.jpg` on disk.
+ *
+ * `total` can undercount briefly while files are still uploading -- there is
+ * no way to tell "800 more are coming" from "that's all of them" by looking
+ * at a directory -- so this is a lower bound on progress, not a promise.
+ */
+export async function progress(id) {
+  const [originals, previews] = await Promise.all([
+    readdir(originalsDir(id)).catch(() => []),
+    readdir(previewsDir(id)).catch(() => []),
+  ]);
+  const total = originals.filter((f) => ORIGINAL_PATTERN.test(f)).length;
+  const done = previews.filter((f) => f.endsWith('-large.jpg')).length;
+  return { done: Math.min(done, total), total };
 }

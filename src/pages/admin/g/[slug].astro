@@ -27,7 +27,7 @@ import DeleteGalleryConfirm from '../../../components/DeleteGalleryConfirm.astro
 import GalleryGrid from '../../../components/GalleryGrid.astro';
 import PhotoUploader from '../../../components/PhotoUploader.tsx';
 import Lightbox from '../../../components/Lightbox.astro';
-import { readManifest } from '../../../../server/storage.js';
+import { readManifest, progress } from '../../../../server/storage.js';
 import {
   findBySlug,
   markPhotosChanged,
@@ -112,6 +112,14 @@ const STATUS_NOTE: Record<string, string> = {
     'Galeria jest gotowa. Paczka ZIP powstanie dopiero przy pobieraniu, bo na serwerze jest mało miejsca.',
 };
 const isPreparing = gallery.status === 'preparing';
+/**
+ * Only meaningful while preparing, and only once at least one photo has
+ * landed -- a gallery she just created, before the first file arrives, has
+ * nothing on disk to count yet, and "0 z 0" is not progress, it is nothing
+ * having happened.
+ */
+const uploadProgress = isPreparing ? await progress(slug) : null;
+const hasProgress = !!uploadProgress && uploadProgress.total > 0;
 
 let photos = [];
 try {
@@ -163,9 +171,20 @@ try {
         words. One box now covers both, because they were never two things --
         removing a photo just puts the gallery back into this same status, so
         there is one thing happening and it deserves one thing said about it.
-        The spinner is what makes it obviously not-finished rather than stuck,
-        and the reload reminder is the one action this page cannot take for
-        her: nothing here polls, so nothing else tells her when to look again. */}
+
+        A real <progress> bar replaces the spinner where there is something to
+        measure it against: a spinner only says "not stuck", this says how
+        far. It reads straight off disk (server/storage.js, progress()) rather
+        than anything the worker writes, since the worker has nothing to say
+        until the whole batch is done. Before the first photo lands there is
+        nothing to divide by, so the plain sentence stays plain then.
+
+        The page reloads itself every few seconds while this is showing --
+        see the script below -- so the bar keeps moving without her doing
+        anything, and the moment the worker finishes, a reload lands on the
+        finished page instead of this one. Without JavaScript the reload
+        does not happen and she is back to doing it by hand, which the
+        sentence still says how to do. */}
     {isPreparing ? (
       <p class="preparing" role="status">
         <svg class="warning-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -173,15 +192,42 @@ try {
           <path d="M12 9.6v4.4" />
           <circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" />
         </svg>
-        <span class="spinner" aria-hidden="true"></span>
-        <span>
-          {justRemoved
-            ? 'Zdjęcie zostało usunięte, więc paczka do pobrania przygotowuje się od nowa. Klient na razie widzi informację, że galeria się szykuje — odśwież stronę, żeby sprawdzić, czy jest już gotowa.'
-            : 'Przygotowuję zdjęcia — klient na razie widzi informację, że galeria się szykuje. Odśwież stronę, żeby sprawdzić, czy jest już gotowa.'}
+        <span class="preparing-body">
+          <span class="preparing-text">
+            {justRemoved
+              ? 'Zdjęcie zostało usunięte, więc paczka do pobrania przygotowuje się od nowa. Klient na razie widzi informację, że galeria się szykuje.'
+              : 'Przygotowuję zdjęcia — klient na razie widzi informację, że galeria się szykuje.'}
+            {' '}Odśwież stronę, żeby sprawdzić, czy jest już gotowa — zrobi to też sama, za kilka sekund.
+          </span>
+          {hasProgress && (
+            <span class="preparing-meter">
+              <progress
+                class="preparing-bar"
+                value={uploadProgress!.done}
+                max={uploadProgress!.total}
+              />
+              <span class="preparing-count">
+                {uploadProgress!.done} z {uploadProgress!.total} zdjęć
+                {' '}({Math.round((uploadProgress!.done / uploadProgress!.total) * 100)}%)
+              </span>
+            </span>
+          )}
         </span>
       </p>
     ) : (
       <p class="state">{STATUS_NOTE[gallery.status] ?? 'Link działa od razu.'}</p>
+    )}
+
+    {/* Progressive enhancement only: the sentence above already tells her to
+        reload by hand, so a browser with JavaScript off is not left with no
+        way to know the gallery finished, just a slower one. 4s divides
+        cleanly into the ~1s/photo resize this project has measured, so a
+        real wedding batch usually shows a different number on every reload
+        rather than the same one twice. */}
+    {isPreparing && (
+      <script is:inline>
+        setTimeout(() => location.reload(), 4000);
+      </script>
     )}
 
     <GalleryGrid slug={row.slug} photos={photos} deletable={true}>
@@ -220,12 +266,9 @@ try {
     line-height: 1.5;
   }
 
-  .warning-icon,
-  .spinner {
+  .warning-icon {
     flex: none;
     margin-top: 0.15rem;
-  }
-  .warning-icon {
     width: 1.15rem;
     height: 1.15rem;
     fill: none;
@@ -234,21 +277,55 @@ try {
     stroke-linejoin: round;
     stroke-linecap: round;
   }
-  .spinner {
-    width: 0.9rem;
-    height: 0.9rem;
-    border: 2px solid currentColor;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+
+  .preparing-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    /* The icon is aligned to the first line of text above; without a
+       min-width the bar and count below it would be free to shrink the
+       whole box down to their own (much narrower) content. */
+    flex: 1 1 auto;
+    min-width: 0;
   }
-  @keyframes spin {
-    to { transform: rotate(360deg); }
+
+  .preparing-meter {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
   }
-  /* A spinner is the one animation on this page that never stops on its own,
-     which is exactly the kind most worth slowing down rather than freezing --
-     a static half-ring reads as broken, not as respecting the preference. */
-  @media (prefers-reduced-motion: reduce) {
-    .spinner { animation-duration: 2.4s; }
+  /* The bar is the point; the count beside it is what makes a number like
+     "612 z 800" mean something faster than counting the fill by eye. */
+  .preparing-bar {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 0.5rem;
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    /* Firefox paints the track from the host element's own background under
+       appearance:none; Chrome and Safari ignore it and use the pseudo-element
+       below instead, so both are declared. */
+    background: rgba(124, 94, 34, 0.18);
+  }
+  .preparing-bar::-webkit-progress-bar {
+    background: rgba(124, 94, 34, 0.18);
+    border-radius: 999px;
+  }
+  .preparing-bar::-webkit-progress-value {
+    background: #7c5e22;
+    border-radius: 999px;
+    transition: width 0.4s ease;
+  }
+  .preparing-bar::-moz-progress-bar {
+    background: #7c5e22;
+    border-radius: 999px;
+    transition: width 0.4s ease;
+  }
+  .preparing-count {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.82rem;
+    white-space: nowrap;
   }
 </style>
