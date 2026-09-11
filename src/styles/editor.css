@@ -390,19 +390,21 @@
 .uploader-card .uppy-Dashboard-AddFiles-list {
   display: none;
 }
+.uploader .uppy-Dashboard-AddFiles-title {
+  color: var(--tekst-jasny);
+}
 .uploader-card .uppy-Dashboard-AddFiles-title {
   font-family: var(--body);
   font-size: 0.9rem;
   line-height: 1.6;
-  color: var(--tekst-jasny);
   padding: 0 1rem;
 }
-.uploader-card .uppy-Dashboard-browse {
+.uploader .uppy-Dashboard-browse {
   color: var(--glina-ciemna);
   font-weight: 400;
 }
-.uploader-card .uppy-Dashboard-browse:hover,
-.uploader-card .uppy-Dashboard-browse:focus {
+.uploader .uppy-Dashboard-browse:hover,
+.uploader .uppy-Dashboard-browse:focus {
   color: var(--glina);
   border-bottom-color: var(--glina);
 }
@@ -415,3 +417,168 @@
    as a safety net, because the fallback path that renders inline exists
    specifically for when the portal target cannot be found -- hiding that
    fallback's own output would silently recreate the bug it exists to avoid. */
+
+/*
+ * Uppy's own skin, retinted.
+ *
+ * Uppy 6 ships no CSS custom properties -- there is no theme variable to set,
+ * only its own selectors to override, so this is a direct remap of every
+ * color and font its stylesheets hardcode: `.uploader` catches both variants
+ * (the tall panel on the empty screen and the card in the grid), since the
+ * mismatch is the same one in both places -- a generic grey-and-Google-blue
+ * dashboard sitting inside a warm serif/clay page. The card's own sizing and
+ * hiding rules above are unaffected; this only ever touches color and type.
+ */
+.uploader .uppy-Root,
+.uploader .uppy-Dashboard,
+.uploader .uppy-Dashboard-inner,
+.uploader .uppy-DashboardContent-bar,
+.uploader .uppy-Dashboard-AddFiles,
+.uploader .uppy-Dashboard-Item,
+.uploader .uppy-StatusBar {
+  font-family: var(--body);
+}
+
+.uploader .uppy-Dashboard-inner {
+  background-color: var(--bez);
+  border: 1px solid var(--piaskowy);
+}
+
+.uploader .uppy-DashboardContent-bar {
+  background-color: var(--kremowy);
+  border-bottom: 1px solid var(--piaskowy);
+}
+
+.uploader .uppy-DashboardContent-title {
+  color: var(--tekst);
+}
+
+.uploader .uppy-DashboardContent-addMore,
+.uploader .uppy-DashboardContent-back {
+  color: var(--glina-ciemna);
+}
+.uploader .uppy-DashboardContent-addMore:hover,
+.uploader .uppy-DashboardContent-back:hover {
+  color: var(--glina);
+}
+.uploader .uppy-DashboardContent-addMore:focus,
+.uploader .uppy-DashboardContent-back:focus {
+  background-color: var(--piaskowy);
+}
+
+/* Uppy's own dotted frame, in the clay/cream pairing used everywhere else a
+   drop target appears, instead of its default grey-on-white. */
+.uploader .uppy-Dashboard-AddFiles {
+  border-color: var(--taupe);
+  background-color: var(--bez);
+}
+/* Shown only for the instant a file is dragged over the window -- the arrow
+   icon is an inline SVG with Uppy's blue baked into the data URI itself, not
+   reachable through any color property, so it is dropped rather than
+   fought. */
+.uploader .uppy-Dashboard-dropFilesHereHint {
+  border-color: var(--glina);
+  color: var(--glina-ciemna);
+  background-image: none;
+}
+
+.uploader .uppy-Dashboard-AddFiles-list {
+  color: var(--tekst-jasny);
+}
+
+.uploader .uppy-Dashboard-note {
+  color: var(--tekst-jasny);
+}
+
+.uploader .uppy-Dashboard-Item {
+  border-bottom: 1px solid var(--piaskowy);
+}
+.uploader .uppy-Dashboard-Item-name {
+  color: var(--tekst);
+}
+.uploader .uppy-Dashboard-Item-status,
+.uploader .uppy-Dashboard-Item-statusSize {
+  color: var(--tekst-jasny);
+}
+.uploader .uppy-Dashboard-Item-previewInnerWrap {
+  background-color: var(--piaskowy);
+}
+
+/* The in-progress ring and the completed checkmark both draw in Uppy's own
+   green via an inline SVG fill -- not reachable through `color`, so the
+   fill itself is overridden. This app's own sage stands in for it, the same
+   tone the disk-usage bar already uses for "fine". */
+.uploader .uppy-Dashboard-Item-progressIcon--circle circle {
+  fill: var(--szalwia);
+}
+.uploader .uppy-Dashboard-Item-progressIcon--check {
+  color: var(--szalwia);
+}
+.uploader .uppy-Dashboard-Item-errorMessage {
+  color: var(--czerwien);
+}
+
+.uploader .uppy-Dashboard-Item-action--remove {
+  color: var(--tekst-jasny);
+}
+.uploader .uppy-Dashboard-Item-action--remove:hover {
+  color: var(--czerwien);
+}
+
+/* The bar along the bottom while a batch is uploading: background, the fill
+   colors for its three end states, and the "Ukończono" text and button,
+   which are blue by default with no relation to whether anything is wrong. */
+.uploader .uppy-StatusBar {
+  background-color: var(--kremowy);
+  color: var(--tekst);
+}
+.uploader .uppy-StatusBar-progress {
+  background-color: var(--piaskowy);
+}
+.uploader .uppy-StatusBar.is-waiting .uppy-StatusBar-progress {
+  background-color: var(--taupe);
+}
+.uploader .uppy-StatusBar.is-complete .uppy-StatusBar-progress {
+  background-color: var(--szalwia);
+}
+.uploader .uppy-StatusBar.is-error .uppy-StatusBar-progress {
+  background-color: var(--czerwien);
+}
+
+.uploader .uppy-StatusBar-statusIndicator {
+  color: var(--tekst-jasny);
+}
+.uploader .uppy-StatusBar.is-complete .uppy-StatusBar-statusIndicator {
+  color: var(--szalwia);
+}
+.uploader .uppy-StatusBar.is-error .uppy-StatusBar-statusIndicator {
+  color: var(--czerwien);
+}
+
+.uploader .uppy-StatusBar-statusPrimary,
+.uploader .uppy-StatusBar-statusSecondary,
+.uploader .uppy-StatusBar-additionalInfo {
+  color: var(--tekst-jasny);
+}
+
+.uploader .uppy-StatusBar-actionBtn {
+  color: var(--glina-ciemna);
+}
+.uploader .uppy-StatusBar-actionBtn:hover {
+  color: var(--glina);
+}
+.uploader .uppy-StatusBar-actionBtn:focus {
+  background-color: var(--piaskowy);
+}
+
+.uploader .uppy-StatusBar-actionCircleBtn svg circle {
+  stroke: var(--glina);
+}
+
+.uploader .uppy-c-btn-primary {
+  background-color: var(--glina);
+  color: var(--biel);
+}
+.uploader .uppy-c-btn-primary:hover {
+  background-color: var(--glina-ciemna);
+}

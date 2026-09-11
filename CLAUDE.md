@@ -501,6 +501,40 @@ reloads the page, because a reload would empty the upload queue; and dropping
 photos into a gallery that exists does not save the details either, because
 choosing a photo should not feel like pressing save.
 
+### Uppy's own skin, retinted
+
+The Dashboard plugin ships one look — grey panels, a system-font stack, and a
+blue/green Google-Material palette that has nothing to do with this app's
+warm serif-and-clay design. Uppy 6 defines no CSS custom properties, so there
+is no theme variable to redirect: `src/styles/editor.css` overrides Uppy's
+own selectors directly, one for one, rather than hooking into a token that
+does not exist.
+
+`.uploader` is the selector both variants share, so one block of rules dresses
+the tall panel on the empty screen and the card in the grid alike: Uppy's
+grey backgrounds (`#f4f4f4`/`#fafafa`/`#eaeaea`) become this app's cream tones
+(`--bez`/`--kremowy`/`--piaskowy`), its blue (`#1269cf`, on the "+ Dodaj
+więcej" button, the browse link, and the "Ukończono" status button alike)
+becomes `--glina-ciemna`, and its green (`#1bb240`, on the per-file progress
+ring and the completed status bar) becomes `--szalwia` — the same sage the
+disk-usage bar already uses for "fine", rather than introducing a second
+green. Its error red (`#e32437`) maps to this app's own `--czerwien`, already
+the delete button's color. `font-family: var(--body)` overrides Uppy's system
+stack throughout.
+
+Two colors resist a plain `color` override because Uppy bakes them into an
+SVG rather than reading a CSS property: the per-file progress ring and
+checkmark are an inline `<circle>`/`<path fill="...">`, overridden by
+targeting `circle { fill: ... }` directly; the "drop files here" hint shown
+while dragging a file over the window has its arrow baked into a data-URI
+`background-image`, which is dropped (`background-image: none`) rather than
+fought, since there is no property that recolors a data URI.
+
+Verified against the live DOM during an actual upload, not just against the
+source stylesheet: the completed checkmark, the "Ukończono" status button,
+and the status bar's fill all measured back as the exact hex values above
+(`getComputedStyle`), in both the panel and the card, at rest and mid-upload.
+
 ### Resumability — get this right
 
 tus means **no progress is lost**, but it does **not** mean background upload. Nothing
