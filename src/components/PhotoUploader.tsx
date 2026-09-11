@@ -158,7 +158,16 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
       void startUploadRef.current();
     };
     const onUploadStart = () => setUploading(true);
-    const onSuccess = () => setSent((count) => count + 1);
+    const onSuccess = () => {
+      setSent((count) => count + 1);
+      // The moment one file finishes, its tus hook has already moved it into
+      // originals/ and woken the worker server-side -- real work is underway
+      // whether or not the gallery's own page is watching for it. This is
+      // the cross-island signal admin/g/[slug].astro listens for to show its
+      // progress banner immediately, rather than only on the next visit or
+      // the timed poll noticing on its own a few seconds later.
+      window.dispatchEvent(new CustomEvent('zdjecia-wyslane'));
+    };
     const onError = (file?: { name?: string }) => {
       setFailed((names) => [...names, file?.name ?? 'plik']);
     };

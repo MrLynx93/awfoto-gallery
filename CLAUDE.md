@@ -149,19 +149,53 @@ a safety net after a crash or a restart. Use **`lockf(1)`** — it is base syste
 so it cannot vanish under a package change. (`flock` also happens to be
 installed here, from a port; don't depend on it.)
 
-**"Preparing" has a real progress bar on the admin page**, not just a spinner.
-`server/storage.js` exports `progress(slug)`, which reads it straight off
-disk rather than from anything the worker writes: `photo_count` and the
-manifest are both written once, at the very end, so there is nowhere else
-this number lives while the batch is still running. It counts `*-large.jpg`
-files in `previews/` against image files in `originals/` — `large.jpg` is the
-second and last file `makeDerivatives()` writes per photo, so a count of
-those is a count of *finished* photos, never one mid-resize. The admin page
-also reloads itself every 4 seconds while `preparing` is showing (a plain
-`setTimeout(() => location.reload(), 4000)`, progressive enhancement only —
-the banner's own text still says to reload by hand, for a browser with
-JavaScript off), so the bar moves on its own and the moment the worker
-finishes, a reload lands on the finished page instead of this one.
+**"Preparing" has a real progress bar on the admin page**, not just a spinner,
+and it updates live rather than by reloading the whole page on a timer.
+
+`server/storage.js` exports `progress(slug)`, which reads the *bar's* numbers
+straight off disk: `*-large.jpg` files in `previews/` against image files in
+`originals/` — `large.jpg` is the second and last file `makeDerivatives()`
+writes per photo, so a count of those is a count of *finished* photos, never
+one mid-resize. `src/pages/admin/api/galerie/[slug]/postep.ts` serves this as
+JSON, and the admin page polls it every 2s via a plain inline script (no
+framework, matching how this codebase always reaches for the least JS that
+works) that patches the bar's width, the count text, and its percentage in
+place — an animated count-up over the numbers rather than a jump, and a
+diagonal stripe sliding across the fill so "still going" survives even while
+the count itself briefly sits still between two polls.
+
+**The bar's numbers are not what decides when to reload, and that distinction
+is load-bearing.** `done` (previews on disk) reaches `total` (originals on
+disk) as soon as every photo's derivatives are finished — but the worker does
+not finalise there. It waits out a 45s quiet window first (`QUIET_PERIOD_MS`,
+in case more files are still arriving), then rebuilds the archive and
+rewrites the manifest, and only *then* does `markReady()` update
+`photo_count`. Reloading as soon as `done >= total` was the first version of
+this and it was wrong: confirmed by watching it happen, a reload at that
+point shows a manifest and a photo count still missing the photos that just
+finished. So the poll's `working` flag compares `gallery.photoCount` (the
+database row) against `total` (disk) instead — the one comparison that is
+only ever satisfied once a finalised run has actually caught up — and only
+then does the page reload, exactly once, to reveal the grid a live patch was
+never going to build.
+
+That comparison is also what makes the banner appear for a gallery that was
+already `ready`. The row's `status` only ever says `preparing` for a first
+batch or right after a delete (`markPhotosChanged`); dropping a few more
+photos into a finished gallery leaves `status = 'ready'` for the entire
+run, including the 45s wait, so `status` alone cannot be trusted to say
+"still working" — `photoCount < total` is what actually catches it. The
+banner does not wait for the next poll to show, either: `PhotoUploader.tsx`
+dispatches a `zdjecia-wyslane` `CustomEvent` on `window` the moment one file
+finishes uploading (its tus hook has already moved it server-side by then),
+and the admin page's script listens for that and reveals the banner
+immediately, polling for real numbers a moment later — the two live in
+separate Astro islands with no shared state otherwise, so a DOM event is what
+crosses that gap. `status === 'failed'` is excluded from all of this: a hard
+failure leaves `photoCount` at 0 permanently, and treating that as "still
+working" would show a bar stuck at 0% forever instead of the actual failure
+message. A retry after a failure has the same small, accepted gap as before:
+no live progress shows until that new run's own `markReady()` lands.
 
 ## Download path
 

@@ -16,5 +16,13 @@ export const galleryAdminPath = (slug) => `/admin/g/${slug}`;
 /** The confirmation screen, one level under it. */
 export const galleryDeletePath = (slug) => `${galleryAdminPath(slug)}/usun`;
 
+/**
+ * Polled from the gallery's own page while photos are still being prepared,
+ * so the progress bar can move and the page can reload itself the moment the
+ * worker finishes -- without her doing either by hand. See
+ * src/pages/admin/api/galerie/[slug]/postep.ts.
+ */
+export const galleryProgressPath = (slug) => `/admin/api/galerie/${slug}/postep`;
+
 /** What the client is sent. Absolute, because she pastes it into a message. */
 export const galleryShareUrl = (slug) => `${baseUrl.replace(/\/+$/, '')}/g/${slug}`;
