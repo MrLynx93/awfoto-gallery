@@ -178,6 +178,15 @@ moves:
 | `/g/:slug/photo/:photo` | one original, `Content-Disposition: attachment` |
 | `/g/:slug/zip` | the whole archive, as an attachment |
 
+The download icon in `Lightbox.astro` is the only thing in the UI that reaches
+`/g/:slug/photo/:photo` — it existed as a route with no way to trigger it from
+either page until a download button was added there, mirroring the close
+button at the opposite corner. It is a plain `<a>`, not a click handler, so the
+route's own `Content-Disposition` header does the work, the way `Pobierz
+wszystkie` already does for the ZIP; `GalleryGrid.astro` puts the slug on
+`#photo-grid` as `data-slug` so the lightbox's script has something to build
+the href from.
+
 The admin session is the second key to all four. She uploaded these photos;
 making her type a client's code to look at her own work is a lock with no
 threat behind it. It also ignores `expires_at`, because an expired gallery is

@@ -110,7 +110,10 @@ const tiles = photos.map((photo, index) => {
 ---
 
 <div class="grid-frame">
-  <div class="photo-grid" id="photo-grid">
+  {/* data-slug: Lightbox.astro reads it to build the download link for
+      whichever photo is showing -- /g/:slug/photo/:index, the one route that
+      serves an original rather than a preview. */}
+  <div class="photo-grid" id="photo-grid" data-slug={slug}>
     {/* The panel puts its drop zone here, as the first card in the grid: adding
         photos belongs among the photos rather than in a panel above them. The
         client's page passes nothing, so the grid starts at the first photograph. */}

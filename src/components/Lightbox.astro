@@ -13,6 +13,21 @@
     </svg>
   </button>
 
+  {/* A real link to /g/:slug/photo/:index, not a click handler on a button --
+      that route already answers with Content-Disposition: attachment (the
+      filename she exported from Lightroom, not the index), so the browser's
+      own download UI is what handles it, same as the "pobierz wszystkie" ZIP
+      link. No `download` attribute for the same reason that link has none:
+      the header already names the file, and duplicating that here would just
+      be a second place for the two names to disagree. Its href is set per
+      photo in the script below, alongside everything else show() updates. */}
+  <a class="lightbox-download" id="lightbox-download" aria-label="Pobierz to zdjęcie">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="M12 3.5v11.5M7.5 10.5 12 15l4.5-4.5" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M5 18.5h14" stroke-linecap="round" />
+    </svg>
+  </a>
+
   <button class="lightbox-nav lightbox-prev" type="button" data-step="-1" aria-label="Poprzednie zdjęcie">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
       <path d="M15 4 7 12l8 8" />
@@ -73,6 +88,7 @@
   }
 
   .lightbox-close,
+  .lightbox-download,
   .lightbox-nav {
     position: absolute;
     display: grid;
@@ -88,10 +104,12 @@
     transition: background 0.25s;
   }
   .lightbox-close:hover,
+  .lightbox-download:hover,
   .lightbox-nav:hover {
     background: rgba(255, 255, 255, 0.18);
   }
   .lightbox-close svg,
+  .lightbox-download svg,
   .lightbox-nav svg {
     width: 20px;
     height: 20px;
@@ -100,6 +118,13 @@
   .lightbox-close {
     top: 1rem;
     right: 1rem;
+    z-index: 2;
+  }
+  /* Mirrors the close button, so the one other thing this screen lets her do
+     is exactly as easy to find. */
+  .lightbox-download {
+    top: 1rem;
+    left: 1rem;
     z-index: 2;
   }
   .lightbox-prev {
@@ -128,8 +153,12 @@
   const grid = document.getElementById('photo-grid');
   const image = document.getElementById('lightbox-image') as HTMLImageElement | null;
   const caption = document.getElementById('lightbox-caption');
+  const download = document.getElementById('lightbox-download') as HTMLAnchorElement | null;
 
-  if (dialog && grid && image && caption) {
+  if (dialog && grid && image && caption && download) {
+    // GalleryGrid.astro sets this; it is what turns "which thumbnail is
+    // showing" into a URL for the one route that serves the original.
+    const slug = grid.dataset.slug;
     const thumbs = Array.from(grid.querySelectorAll('img'));
     let current = 0;
 
@@ -146,6 +175,9 @@
       image.alt = thumb.alt;
       caption.textContent =
         thumbs.length > 1 ? `${current + 1} / ${thumbs.length}` : '';
+      // `current` is a position in the grid, and the grid is built in manifest
+      // order with no gaps -- the same thing the URL calls :index.
+      if (slug) download.href = `/g/${slug}/photo/${current}`;
     };
 
     grid.addEventListener('click', (event) => {
