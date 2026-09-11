@@ -72,6 +72,23 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
          whole list unreadable rather than just the far end of it. */
       <div class="scroller">
       <table>
+        {/* table-layout: fixed turns these into the columns' actual widths
+            instead of a hint auto-layout is free to overrule. Every column but
+            the first gets one, sized to what it ever has to hold -- a date, a
+            count, a size, a day count, one button -- so the name, the one
+            column with no ceiling on how long its content gets, is the one
+            that absorbs whatever width is left. Meaningless once the phone
+            media query below turns the table into a block; `<col>` only
+            matters while it is still laid out as a table. */}
+        <colgroup>
+          <col />
+          <col style="width: 0" />
+          <col style="width: 7rem" />
+          <col style="width: 6.5rem" />
+          <col style="width: 7rem" />
+          <col style="width: 6.5rem" />
+          <col style="width: 7.5rem" />
+        </colgroup>
         <thead>
           <tr>
             {/* The row is a session; the client's name is how she recognises
@@ -210,7 +227,11 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
      two columns and its buttons become icons instead, so it fits. This only
      catches the awkward middle -- a long client name on a narrow tablet. */
   .scroller { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.92rem; }
+  /* The other columns are sized to their content in the colgroup above and
+     never wrap; the name is the one column meant to grow, so it is the one
+     column that still can. */
+  th:not(:first-child), td:not(:first-child) { white-space: nowrap; }
   th {
     text-align: left; font-weight: 500; font-size: 0.72rem;
     letter-spacing: 0.12em; text-transform: uppercase; color: var(--tekst-jasny);
@@ -258,8 +279,20 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
   .expired { color: var(--glina-ciemna); }
   .empty { color: var(--tekst-jasny); padding: 3rem 0; text-align: center; }
 
-  /* Only the phone reads this cell; a wide screen has the columns. */
-  .summary { display: none; }
+  /* Only the phone reads this cell; a wide screen has the columns instead --
+     but not via display:none. Confirmed in isolation: under table-layout:
+     fixed, a display:none cell earlier in the row makes Chromium misassign
+     every colgroup width one column to the left, as if the hidden cell's slot
+     had been removed rather than just hidden. So this stays a real, empty
+     table-cell -- zero width from the colgroup already, and clipped so the
+     sentence it always holds does not spill into the column beside it. */
+  @media (min-width: 701px) {
+    .summary {
+      padding: 0;
+      border: 0;
+      overflow: hidden;
+    }
+  }
 
   /*
    * Phone: the table stops being a table.

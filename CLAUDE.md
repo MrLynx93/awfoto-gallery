@@ -374,6 +374,31 @@ Not worth it for something the browser justifies on its own.
   manifest without re-encoding anything or touching the ZIP. Once per gallery,
   then never again.
 
+## The galleries list gives the name column the room
+
+`table-layout: fixed` with a `<colgroup>`, not the auto layout the table had
+before. Auto layout distributes a table's spare width across columns in
+proportion to their own content, and a session name is the one column with no
+natural ceiling on that -- so whether it actually got more room than a numeral
+or a button depended on whatever the browser's heuristic did with the row's
+other content that day. `fixed` makes it deliberate instead: every column but
+the first is given a width sized to what it ever has to hold (a date, a count,
+a size, a day count, one button), and the name -- the only column left
+unspecified -- absorbs whatever the row's total width leaves over.
+
+**Measured, not assumed: a `display: none` cell breaks this.** The hidden
+second column (`.summary`, the phone-only sentence) used to be hidden exactly
+that way, and under `table-layout: fixed` it made Chromium misassign every
+`<col>` width one column to the left -- as if the hidden cell's slot had been
+removed from the row rather than just hidden, so "Data" silently rendered at
+the width meant for the empty column beside it, and so on down the row.
+Confirmed in isolation with a two-line repro before it was believed. The fix
+is not to hide that cell at all: it stays a real, empty table-cell -- zero
+width from the `<col>` already accounts for it, `overflow: hidden` clips the
+sentence it always holds so it cannot spill into the column beside it, and
+none of this touches the phone layout, where the table stops being a table
+before `<colgroup>` ever applies.
+
 ## Upload UI requirements
 
 One screen. Nothing else on it.
