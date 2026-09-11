@@ -27,7 +27,7 @@ export const POST: APIRoute = async (context) => {
     // readGalleryDetails insists on a name unless told otherwise, so this is
     // present; spelling the arguments out keeps that obvious in both directions.
     sessionName: String(values.sessionName),
-    shootDate: values.shootDate ?? '',
+    sessionDate: values.sessionDate ?? '',
     expiryDays: values.expiryDays ?? DEFAULT_EXPIRY_DAYS,
     password,
   });

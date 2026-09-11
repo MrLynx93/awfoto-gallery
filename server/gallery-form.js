@@ -36,7 +36,7 @@ const ALLOWED_DAYS = new Set(EXPIRY_CHOICES.map((choice) => choice.days));
  * @param {{ requireName?: boolean }} options
  */
 export function readGalleryDetails(body, { requireName = true } = {}) {
-  /** @type {{ sessionName?: string, shootDate?: string, expiryDays?: number }} */
+  /** @type {{ sessionName?: string, sessionDate?: string, expiryDays?: number }} */
   const values = {};
 
   if (body.sessionName !== undefined || requireName) {
@@ -50,12 +50,12 @@ export function readGalleryDetails(body, { requireName = true } = {}) {
     values.sessionName = sessionName;
   }
 
-  if (body.shootDate !== undefined) {
-    const shootDate = String(body.shootDate ?? '').trim();
-    if (shootDate && !isCalendarDate(shootDate)) {
+  if (body.sessionDate !== undefined) {
+    const sessionDate = String(body.sessionDate ?? '').trim();
+    if (sessionDate && !isCalendarDate(sessionDate)) {
       return { error: 'Data sesji jest nieprawidłowa. Wybierz ją z kalendarza.' };
     }
-    values.shootDate = shootDate;
+    values.sessionDate = sessionDate;
   }
 
   // An empty string is how the editor says "don't touch the expiry", which is

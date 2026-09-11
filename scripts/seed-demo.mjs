@@ -110,7 +110,7 @@ for (const [index, src] of sources.entries()) {
 const password = generatePassword();
 const { slug } = await create({
   sessionName: 'Zuzia i Marek',
-  shootDate: '2026-09-19',
+  sessionDate: '2026-09-19',
   password,
   expiryDays: 30,
 });

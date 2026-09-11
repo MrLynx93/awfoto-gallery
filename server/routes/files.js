@@ -136,7 +136,7 @@ filesRouter.get('/g/:slug/zip', async (req, res) => {
   // ASCII-folded, because the download name crosses Content-Disposition and
   // lands on the client's filesystem — the archive's *contents* keep their
   // Polish names, flagged UTF-8 by `zip -UN=UTF8`.
-  const stem = `${gallery.sessionName} ${gallery.shootDate ?? ''}`
+  const stem = `${gallery.sessionName} ${gallery.sessionDate ?? ''}`
     .normalize('NFKD')
     .replace(/[̀-ͯłŁ]/g, (c) => (c === 'ł' ? 'l' : c === 'Ł' ? 'L' : ''))
     .replace(/[^A-Za-z0-9]+/g, '-')

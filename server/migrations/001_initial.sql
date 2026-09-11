@@ -11,7 +11,7 @@ CREATE TABLE galleries (
   -- What she calls the session: often a couple, sometimes "Chrzciny Zosi".
   -- The client's name only when that is what the session is.
   session_name  VARCHAR(120) NOT NULL,
-  shoot_date    DATE         NULL,
+  session_date  DATE         NULL,
   password_hash VARCHAR(255) NOT NULL,
   status        ENUM('preparing', 'ready', 'failed', 'zip_unavailable')
                 NOT NULL DEFAULT 'preparing',

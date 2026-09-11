@@ -26,7 +26,7 @@ export interface GalleryView {
   slug: string;
   sessionName: string;
   /** 'YYYY-MM-DD', or '' when she never set one. */
-  shootDate: string;
+  sessionDate: string;
   status: string;
   photoCount: number;
   daysLeft: number | null;
@@ -80,7 +80,7 @@ export default function GalleryEditor({
   const [password, setPassword] = useState<string | null>(initialPassword);
 
   const [sessionName, setSessionName] = useState(initialGallery?.sessionName ?? '');
-  const [shootDate, setShootDate] = useState(initialGallery?.shootDate ?? '');
+  const [sessionDate, setSessionDate] = useState(initialGallery?.sessionDate ?? '');
   // A new gallery needs a term chosen for it; an existing one already has a
   // date, and touching nothing must not move it.
   const [expiryDays, setExpiryDays] = useState<string>(
@@ -100,7 +100,7 @@ export default function GalleryEditor({
   const dirty =
     !gallery ||
     sessionName !== gallery.sessionName ||
-    shootDate !== gallery.shootDate ||
+    sessionDate !== gallery.sessionDate ||
     expiryDays !== UNCHANGED;
 
   const flashSaved = () => {
@@ -133,7 +133,7 @@ export default function GalleryEditor({
       setSaving(true);
       setFormError(null);
       try {
-        const body: Record<string, unknown> = { sessionName: name, shootDate };
+        const body: Record<string, unknown> = { sessionName: name, sessionDate };
         // Absent means "leave it": the server cannot tell "30 days" applied to a
         // gallery created three weeks ago from a deliberate new term.
         if (expiryDays !== UNCHANGED) body.expiryDays = Number(expiryDays);
@@ -160,7 +160,7 @@ export default function GalleryEditor({
         const saved: GalleryView = data.gallery;
         setGallery(saved);
         setSessionName(saved.sessionName);
-        setShootDate(saved.shootDate);
+        setSessionDate(saved.sessionDate);
         setExpiryDays(UNCHANGED);
         if (data.password) setPassword(data.password);
         flashSaved();
@@ -184,7 +184,7 @@ export default function GalleryEditor({
     } finally {
       inFlight.current = null;
     }
-  }, [sessionName, shootDate, expiryDays, gallery]);
+  }, [sessionName, sessionDate, expiryDays, gallery]);
 
   /**
    * Saving a gallery that already exists is not something she should have to
@@ -374,10 +374,10 @@ export default function GalleryEditor({
           <label>
             <span>Data sesji</span>
             <input
-              name="shootDate"
+              name="sessionDate"
               type="date"
-              value={shootDate}
-              onChange={(event) => setShootDate(event.target.value)}
+              value={sessionDate}
+              onChange={(event) => setSessionDate(event.target.value)}
               onBlur={saveNow}
             />
           </label>

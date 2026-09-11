@@ -113,7 +113,7 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                   ? 'Termin minął.'
                   : `Wygasa za ${dayCount(daysUntil(gallery.expiresAt))}.`}
               </td>
-              <td class="muted col-date">{gallery.shootDate ?? '—'}</td>
+              <td class="muted col-date">{gallery.sessionDate ?? '—'}</td>
               <td class="num col-count">{gallery.photoCount}</td>
               <td class="num col-size">{megabytes(gallery.bytesTotal)}</td>
               <td class={`col-expiry ${gallery.expired ? 'expired' : ''}`}>

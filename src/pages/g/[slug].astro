@@ -88,7 +88,7 @@ const polishDate = (value: string) =>
     year: 'numeric',
   });
 
-const dateLabel = gallery?.shootDate ? polishDate(gallery.shootDate) : null;
+const dateLabel = gallery?.sessionDate ? polishDate(gallery.sessionDate) : null;
 
 // How long they have. Said plainly, on the page, because the alternative is a
 // client who finds out by coming back to an expired gallery -- and by then the
