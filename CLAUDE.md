@@ -153,16 +153,30 @@ installed here, from a port; don't depend on it.)
 and it updates live rather than by reloading the whole page on a timer.
 
 `server/storage.js` exports `progress(slug)`, which reads the *bar's* numbers
-straight off disk: `*-large.jpg` files in `previews/` against image files in
-`originals/` — `large.jpg` is the second and last file `makeDerivatives()`
-writes per photo, so a count of those is a count of *finished* photos, never
-one mid-resize. `src/pages/admin/api/galerie/[slug]/postep.ts` serves this as
-JSON, and the admin page polls it every 2s via a plain inline script (no
+straight off disk: `*-large.jpg` files in `previews/` against one record per
+photo in `originals/` — `large.jpg` is the second and last file
+`makeDerivatives()` writes per photo, so a count of those is a count of
+*finished* photos, never one mid-resize.
+`src/pages/admin/api/galerie/[slug]/postep.ts` serves this as JSON, and
+`PreparingBanner.astro` polls it every 2s via a plain inline script (no
 framework, matching how this codebase always reaches for the least JS that
 works) that patches the bar's width, the count text, and its percentage in
 place — an animated count-up over the numbers rather than a jump, and a
 diagonal stripe sliding across the fill so "still going" survives even while
 the count itself briefly sits still between two polls.
+
+**The banner is a component because it belongs on two screens**, and the
+second one is the awkward one. `/admin/galeria` is rendered before the gallery
+exists — she drops a folder, the editor creates the row over fetch and rewrites
+the address bar to `/admin/g/<slug>` — so a screen that had nothing to say
+about a worker that was already running left her looking at a finished-looking
+page, with a manual refresh as the only way to find out. Now the banner is
+there too, hidden until the first file lands, and the slug arrives *in the
+upload event* rather than being rendered into the page: `PhotoUploader.tsx`
+puts it in the `zdjecia-wyslane` detail, which is the only place that slug
+exists on a page rendered before the gallery did. The one reload the poll
+eventually does then lands on the gallery's own page, because the address bar
+already says so.
 
 **The bar's numbers are not what decides when to reload, and that distinction
 is load-bearing.** `done` (previews on disk) reaches `total` (originals on
@@ -190,10 +204,10 @@ run, including the 45s wait, so `status` alone cannot be trusted to say
 banner does not wait for the next poll to show, either: `PhotoUploader.tsx`
 dispatches a `zdjecia-wyslane` `CustomEvent` on `window` the moment one file
 finishes uploading (its tus hook has already moved it server-side by then),
-and the admin page's script listens for that and reveals the banner
-immediately, polling for real numbers a moment later — the two live in
+and the banner's script listens for that and reveals itself immediately,
+polling for real numbers a moment later — the uploader and the banner live in
 separate Astro islands with no shared state otherwise, so a DOM event is what
-crosses that gap. `status === 'failed'` is excluded from all of this: a hard
+crosses that gap, carrying the slug with it. `status === 'failed'` is excluded from all of this: a hard
 failure leaves `photoCount` at 0 permanently, and treating that as "still
 working" would show a bar stuck at 0% forever instead of the actual failure
 message. A retry after a failure has the same small, accepted gap as before:
@@ -550,9 +564,12 @@ as the photographs beside it, because adding photos belongs among the photos;
 `PhotoUploader.tsx` is that card here and the tall panel on the empty screen,
 where dropping a folder is one of the two ways a gallery gets created.
 
-Uploading to an existing gallery has no on-page confirmation beyond "Wysłano N
-zdjęć. Odśwież stronę, żeby je zobaczyć" — the same message the empty screen's
-panel shows, just **portalled** out of the card. A card is sized like the
+Uploading has no on-page confirmation beyond "Wysłano N zdjęć" — the same
+message on either screen, just **portalled** out of the card on the one where
+the uploader is a card. It no longer ends in "Odśwież stronę, żeby je
+zobaczyć": the preparing banner right below says the page updates itself, and
+it does, so two instructions that disagreed became one that is merely
+redundant. A card is sized like the
 photographs beside it, with no room for that sentence at wedding scale or for a
 list of failed files, so `PhotoUploader.tsx` renders that text into a plain
 `#uploader-feedback` div the admin page places right after the grid, via

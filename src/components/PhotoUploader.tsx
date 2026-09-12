@@ -99,6 +99,16 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
     [],
   );
 
+  /**
+   * Which gallery the files in flight belong to.
+   *
+   * On the new-gallery screen that is only known once `ensureGallery` has
+   * created it, and the page around this was rendered before that -- so this
+   * is what the upload event carries out to the preparing banner, which
+   * otherwise has no gallery to ask about.
+   */
+  const uploadedSlug = useRef<string | null>(slug);
+
   const startUpload = useCallback(async () => {
     const target = slug ?? (ensureGallery ? await ensureGallery() : null);
     if (!target) {
@@ -106,6 +116,7 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
       return;
     }
     setHeld(false);
+    uploadedSlug.current = target;
     uppy.setMeta({ slug: target });
     try {
       await uppy.upload();
@@ -162,11 +173,15 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
       setSent((count) => count + 1);
       // The moment one file finishes, its tus hook has already moved it into
       // originals/ and woken the worker server-side -- real work is underway
-      // whether or not the gallery's own page is watching for it. This is
-      // the cross-island signal admin/g/[slug].astro listens for to show its
-      // progress banner immediately, rather than only on the next visit or
-      // the timed poll noticing on its own a few seconds later.
-      window.dispatchEvent(new CustomEvent('zdjecia-wyslane'));
+      // whether or not the page around this is watching for it. This is the
+      // cross-island signal PreparingBanner.astro listens for, to show its
+      // progress immediately rather than on the next visit or when a timed
+      // poll notices a few seconds later. The slug rides along because on the
+      // new-gallery screen the banner has no other way to learn it: that
+      // gallery did not exist when the page was rendered.
+      window.dispatchEvent(
+        new CustomEvent('zdjecia-wyslane', { detail: { slug: uploadedSlug.current } }),
+      );
     };
     const onError = (file?: { name?: string }) => {
       setFailed((names) => [...names, file?.name ?? 'plik']);
@@ -221,8 +236,11 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
 
       {sent > 0 && (
         <p className="status" role="status">
-          Wysłano {sent} {sent === 1 ? 'zdjęcie' : 'zdjęć'}. Odśwież stronę, żeby je
-          zobaczyć.
+          {/* No "refresh the page" anymore: the banner below says the page
+              updates itself, and it does -- reloading once, on its own, when
+              the worker has finished. Two instructions that disagree is worse
+              than one that is merely redundant. */}
+          Wysłano {sent} {sent === 1 ? 'zdjęcie' : 'zdjęć'}.
         </p>
       )}
 

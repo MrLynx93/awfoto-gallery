@@ -1,0 +1,341 @@
+---
+/**
+ * "Przygotowuję zdjęcia" — the banner, its progress bar, and the poll that
+ * keeps both moving.
+ *
+ * It belongs on two screens, which is why it is a component rather than markup
+ * inside one page: a gallery's own page, and the **new-gallery screen**, where
+ * the row does not exist yet when the page is rendered. She drops a folder,
+ * the editor creates the gallery over fetch and rewrites the address bar to
+ * `/admin/g/<slug>` — and from that moment there is a worker running with
+ * nothing on screen to say so. That was a manual refresh she had no reason to
+ * know she needed.
+ *
+ * So the poll's URL can arrive *after* this renders, out of the
+ * `zdjecia-wyslane` event `PhotoUploader.tsx` fires when a file lands: the
+ * event carries the slug it uploaded to, which is the only place that slug
+ * exists on a screen that was rendered before the gallery did. Where the slug
+ * is known up front (a gallery's own page) it is baked in and the event is
+ * only a signal to start early.
+ *
+ * Both states are always in the markup, toggled with `hidden` rather than one
+ * being conditionally rendered: the script flips between them the moment an
+ * upload finishes, and it can only do that with real elements, not by asking
+ * Astro to build one. Without JavaScript neither moves, and what the server
+ * rendered is simply correct for whenever the page happened to load — which is
+ * what the sentence about refreshing by hand is there for.
+ */
+import { galleryProgressPath } from '../../server/paths.js';
+
+interface Props {
+  /** Null on the new-gallery screen: the row appears only once she saves or drops photos. */
+  slug?: string | null;
+  working?: boolean;
+  done?: number;
+  total?: number;
+  /**
+   * What to say when nothing is being prepared. Omitted on a screen that has
+   * no gallery to say anything about yet.
+   */
+  note?: string | null;
+  /** The banner's own first sentence; a delete says something slightly different. */
+  text?: string;
+}
+
+const {
+  slug = null,
+  working = false,
+  done = 0,
+  total = 0,
+  note = null,
+  text = 'Przygotowuję zdjęcia — klient na razie widzi informację, że galeria się szykuje.',
+} = Astro.props;
+
+const hasProgress = total > 0;
+const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
+---
+
+<p class="preparing" role="status" id="preparing-banner" hidden={!working}>
+  <svg class="warning-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 3.6 21.4 20H2.6L12 3.6Z" />
+    <path d="M12 9.6v4.4" />
+    <circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none" />
+  </svg>
+  <span class="preparing-body">
+    <span class="preparing-text" id="preparing-text">
+      {text}{' '}Ta strona zaktualizuje się sama, gdy będzie gotowa — bez JavaScriptu odśwież ją
+      ręcznie, żeby sprawdzić.
+    </span>
+    {/* A div-based bar rather than <progress>: the width, the stripe that
+        slides across it and the count beside it all need to animate smoothly
+        on every poll, which a native <progress> element does not reliably do
+        across browsers. `hidden` rather than left out entirely, same reasoning
+        as the two states above -- the upload-triggered script needs a real
+        element to reveal once the first live number arrives. */}
+    <span class="preparing-meter" id="preparing-meter" hidden={!hasProgress}>
+      <span
+        class="preparing-track"
+        id="preparing-track"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={progressPct}
+      >
+        <span class="preparing-fill" id="preparing-fill" style={`width: ${progressPct}%`} />
+      </span>
+      <span class="preparing-count" id="preparing-count">
+        {done} z {total} zdjęć ({progressPct}%)
+      </span>
+    </span>
+  </span>
+</p>
+
+{note !== null && (
+  <p class="state" id="gallery-state" hidden={working}>
+    {note}
+  </p>
+)}
+
+{/* Polls postep.ts every couple of seconds while `working`, so the bar moves
+    and the count climbs without a reload -- and reloads exactly once, the
+    moment the answer says there is nothing left to do, which is the one point
+    a reload actually earns its keep: revealing the finished grid. On the
+    new-gallery screen that reload lands on the gallery's own page rather than
+    back here, because the editor has already rewritten the address bar to it.
+
+    `zdjecia-wyslane` is what makes the banner appear immediately after a drop
+    rather than on a later visit: a brand-new gallery has no banner in the
+    page at all, and one that is already `ready` keeps saying so for the whole
+    time the worker is quietly catching up on the new files, so nothing
+    server-rendered would show either.
+
+    Progressive enhancement only: without JavaScript this never runs, and the
+    sentence above already told her to reload by hand instead. */}
+<script
+  is:inline
+  data-progress-url={slug ? galleryProgressPath(slug) : ''}
+  data-progress-template={galleryProgressPath('__SLUG__')}
+  data-initially-working={working ? '1' : ''}
+  data-initial-done={done}
+  data-initial-total={total}
+>
+  (function (scriptEl) {
+      if (!scriptEl) return;
+      const banner = document.getElementById('preparing-banner');
+      const stateEl = document.getElementById('gallery-state');
+      const meterEl = document.getElementById('preparing-meter');
+      const trackEl = document.getElementById('preparing-track');
+      const fillEl = document.getElementById('preparing-fill');
+      const countEl = document.getElementById('preparing-count');
+      if (!banner || !meterEl) return;
+
+      // Empty until a gallery exists. On the new-gallery screen the first
+      // upload event brings the slug this is built from.
+      let progressUrl = scriptEl.dataset.progressUrl;
+      const template = scriptEl.dataset.progressTemplate;
+      let shownDone = Number(scriptEl.dataset.initialDone) || 0;
+      let shownTotal = Number(scriptEl.dataset.initialTotal) || 0;
+      let polling = false;
+      let timer = null;
+      let raf = null;
+
+      // Counts the visible number up (or down) to a new value over a
+      // short span instead of jumping, so three photos finishing between
+      // polls reads as progress rather than a number changing twice.
+      function animateCount(from, to, totalNow, duration) {
+        if (raf) cancelAnimationFrame(raf);
+        const start = performance.now();
+        const step = (now) => {
+          const t = Math.min(1, (now - start) / duration);
+          const value = Math.round(from + (to - from) * t);
+          const pct = totalNow > 0 ? Math.round((value / totalNow) * 100) : 0;
+          countEl.textContent = value + ' z ' + totalNow + ' zdjęć (' + pct + '%)';
+          if (t < 1) {
+            raf = requestAnimationFrame(step);
+          } else {
+            raf = null;
+          }
+        };
+        raf = requestAnimationFrame(step);
+      }
+
+      function applyProgress(done, total) {
+        if (total <= 0) {
+          meterEl.hidden = true;
+          shownDone = done;
+          shownTotal = total;
+          return;
+        }
+        meterEl.hidden = false;
+        const pct = Math.round((done / total) * 100);
+        fillEl.style.width = pct + '%';
+        trackEl.setAttribute('aria-valuenow', String(pct));
+        if (done !== shownDone || total !== shownTotal) {
+          animateCount(shownDone, done, total, 500);
+        }
+        shownDone = done;
+        shownTotal = total;
+      }
+
+      function show() {
+        banner.hidden = false;
+        if (stateEl) stateEl.hidden = true;
+      }
+
+      function poll() {
+        fetch(progressUrl, { headers: { accept: 'application/json' } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (!data) throw new Error('bad response');
+            if (data.working) {
+              show();
+              applyProgress(data.done, data.total);
+              timer = setTimeout(poll, 2000);
+            } else {
+              // The one reload this still does: the grid itself, the
+              // photo count heading and everything else on the page
+              // needs the new photos, and rebuilding all of that here
+              // would be a second copy of what the server already does
+              // on every load.
+              location.reload();
+            }
+          })
+          .catch(() => {
+            // A dropped request just tries again rather than freezing the
+            // bar or reloading on a guess.
+            timer = setTimeout(poll, 2000);
+          });
+      }
+
+      function start() {
+        if (polling || !progressUrl) return;
+        polling = true;
+        show();
+        if (timer) clearTimeout(timer);
+        poll();
+      }
+
+      if (scriptEl.dataset.initiallyWorking) start();
+
+      window.addEventListener('zdjecia-wyslane', (event) => {
+        const slug = event && event.detail && event.detail.slug;
+        // The gallery was created a moment ago by the drop that fired this,
+        // so this is the first time the poll has anywhere to ask.
+        if (!progressUrl && slug && template) {
+          progressUrl = template.replace('__SLUG__', encodeURIComponent(slug));
+        }
+        start();
+      });
+    })(document.currentScript);
+</script>
+
+<style>
+  /* Amber rather than the destructive red of the delete warning elsewhere --
+     nothing has gone wrong here, something is just not finished yet.
+
+     `:not([hidden])` rather than a bare `.preparing`: a class selector and
+     the browser's own `[hidden] { display: none }` rule have equal
+     specificity, and an author rule wins that tie regardless of which one
+     is more specific in spirit -- so a bare `display: flex` here would
+     silently override `hidden` and show this banner always. Confirmed by
+     testing the toggle, not assumed: an earlier version got away with it
+     only because the two states were never both in the DOM at once. */
+  .preparing:not([hidden]) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    background: #f6e9c9;
+    border: 1px solid #ddc07f;
+    border-radius: 4px;
+    padding: 0.9rem 1.2rem;
+    margin: 0 0 1.2rem;
+    color: #7c5e22;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .warning-icon {
+    flex: none;
+    margin-top: 0.15rem;
+    width: 1.15rem;
+    height: 1.15rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .preparing-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    /* The icon is aligned to the first line of text above; without a
+       min-width the bar and count below it would be free to shrink the
+       whole box down to their own (much narrower) content. */
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Same reasoning as .preparing above -- this is also toggled with
+     `hidden` from script, on the initial paint and by applyProgress(). */
+  .preparing-meter:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  /* The bar is the point; the count beside it is what makes a number like
+     "612 z 800" mean something faster than counting the fill by eye.
+
+     A plain div rather than <progress>: the width needs to transition
+     smoothly on every poll and carry a moving stripe on top of that, and a
+     native <progress> element's fill is a replaced element whose pseudo-
+     elements do not reliably animate the same way across browsers. A real
+     `width` on a real box does, everywhere. */
+  .preparing-track {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: rgba(124, 94, 34, 0.18);
+    overflow: hidden;
+  }
+  .preparing-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background-color: #7c5e22;
+    /* The moving stripe is what says "still going" independently of the
+       count -- the same reason the old spinner existed, kept here as a
+       texture on top of a bar that now also says how far. */
+    background-image: linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.3) 25%,
+      transparent 25%,
+      transparent 50%,
+      rgba(255, 255, 255, 0.3) 50%,
+      rgba(255, 255, 255, 0.3) 75%,
+      transparent 75%,
+      transparent
+    );
+    background-size: 1rem 1rem;
+    animation: preparing-stripes 0.9s linear infinite;
+    transition: width 0.5s ease;
+  }
+  @keyframes preparing-stripes {
+    from { background-position: 0 0; }
+    to { background-position: 1rem 0; }
+  }
+  /* An animation with no natural end is exactly the kind worth slowing
+     rather than stopping outright -- a frozen diagonal stripe reads as
+     broken, not as respecting the preference. */
+  @media (prefers-reduced-motion: reduce) {
+    .preparing-fill { animation-duration: 3s; }
+  }
+  .preparing-count {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+</style>

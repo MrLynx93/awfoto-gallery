@@ -10,11 +10,19 @@
  * old first step needed a Post/Redirect/Get dance to achieve.
  *
  * Once the gallery exists the editor rewrites the address bar to
- * /admin/galeria/<slug>, so from then on this tab is that gallery's own page:
- * a refresh reopens it, with the photos it already has.
+ * /admin/g/<slug>, so from then on this tab is that gallery's own page: a
+ * refresh reopens it, with the photos it already has.
+ *
+ * Which is also why the preparing banner is here. Dropping a folder creates
+ * the gallery and starts the worker, and this screen -- rendered before either
+ * existed -- had nothing to say about it: she was left on a page that looked
+ * finished, with no way to know a refresh was what showed her the photos. The
+ * banner picks the gallery up from the upload event instead, and the one
+ * reload it eventually does lands on the address the editor already wrote.
  */
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import GalleryEditor from '../../../components/GalleryEditor.tsx';
+import PreparingBanner from '../../../components/PreparingBanner.astro';
 import { ADMIN_COOKIE, isAdmin } from '../../../../server/sessions.js';
 import { EXPIRY_CHOICES, DEFAULT_EXPIRY_DAYS } from '../../../../server/gallery-form.js';
 import '../../../styles/editor.css';
@@ -37,4 +45,17 @@ if (!isAdmin(Astro.cookies.get(ADMIN_COOKIE)?.value)) {
     defaultExpiryDays={DEFAULT_EXPIRY_DAYS}
     withUploader={true}
   />
+
+  {/* Nothing to show until she drops something: no gallery, no worker, no
+      numbers. It renders hidden and the first finished upload reveals it. */}
+  <section class="preparing-slot">
+    <PreparingBanner />
+  </section>
 </BaseLayout>
+
+<style>
+  /* The banner is a sibling of the editor's cards rather than a child of the
+     island that draws them, so the gap they keep between themselves has to be
+     stated here. */
+  .preparing-slot { display: block; margin-top: 2rem; }
+</style>
