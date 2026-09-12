@@ -168,12 +168,15 @@ the count itself briefly sits still between two polls.
 is load-bearing.** `done` (previews on disk) reaches `total` (originals on
 disk) as soon as every photo's derivatives are finished — but the worker does
 not finalise there. It waits out a 45s quiet window first (`QUIET_PERIOD_MS`,
-in case more files are still arriving), then rebuilds the archive and
-rewrites the manifest, and only *then* does `markReady()` update
-`photo_count`. Reloading as soon as `done >= total` was the first version of
-this and it was wrong: confirmed by watching it happen, a reload at that
-point shows a manifest and a photo count still missing the photos that just
-finished. So the poll's `working` flag compares `gallery.photoCount` (the
+in case more files are still arriving), then rebuilds the archive, and only
+*then* does `markReady()` update `photo_count`. Reloading as soon as
+`done >= total` was the first version of this and it was wrong: confirmed by
+watching it happen, a reload at that point lands on a photo count and an
+archive still missing the photos that just finished. (The manifest is no
+longer one of them — the worker writes it at the end of every run now, not
+only the finishing one, because it is also the record of which photo each
+numbered preview belongs to; see "The previews have to move when the order
+does".) So the poll's `working` flag compares `gallery.photoCount` (the
 database row) against `total` (disk) instead — the one comparison that is
 only ever satisfied once a finalised run has actually caught up — and only
 then does the page reload, exactly once, to reveal the grid a live patch was
@@ -196,6 +199,54 @@ failure leaves `photoCount` at 0 permanently, and treating that as "still
 working" would show a bar stuck at 0% forever instead of the actual failure
 message. A retry after a failure has the same small, accepted gap as before:
 no live progress shows until that new run's own `markReady()` lands.
+
+## The previews have to move when the order does
+
+A photo's identity is its position. The worker lists the originals in name
+order and writes previews as `<n>-thumb.jpg`, which is what lets a route serve
+`/g/:slug/p/4/thumb.jpg` without looking anything up — and it means the
+numbering only holds still while the *set* of originals does.
+
+It does not. She adds the three photos she forgot, `DSC_0100.jpg` sorts ahead
+of half the wedding, and every photo after it moves up one place. A first
+batch does it too, because files land in the order the uploads finish rather
+than the order the names sort in, and every run re-reads the directory.
+
+Left alone, the worker's own incremental check — "position 4 already has both
+derivatives, skip it" — then keeps every preview exactly where it was, and the
+grid comes out one place out: each tile shows its neighbour's photograph, the
+last photo appears twice, the newly added one is nowhere, and every tile is
+drawn stretched to proportions belonging to a different frame, since the
+manifest's `width`/`height` travel with the filename while the image travels
+with the position. Nothing fails; the gallery is simply wrong. That happened,
+and `scripts/check-preview-order.mjs` (`npm run check:previews`) exists so it
+cannot happen quietly again.
+
+`server/previews.js` is the fix, and it is the move `server/photos.js` already
+makes for a delete: *rename* the previews into their new positions rather than
+re-encode them. `reconcilePreviews()` runs before anything reuses a preview,
+renaming through a staging name — a shift is a permutation, so one move's
+source is usually another move's target — and then deleting every numbered
+preview no current photo claims: the leftovers of a deleted original, or one
+made for a position that now holds someone else. A few renames replace putting
+the tail of a wedding back through ImageMagick.
+
+Which photo a numbered preview was made from is not written on the file, so
+**the manifest is that record**, and that is why the worker writes it at the
+end of every run now rather than only the run that finishes the gallery: a
+batch still arriving has to leave behind something that says what is on disk.
+`reconcilePreviews()` rewrites it in the same breath as the renames, so a run
+killed in between leaves the two still agreeing with each other. Previews with
+no manifest to place them are remade rather than guessed at — a preview under
+the wrong photo is worse than no preview at all — and that is the only case
+here that costs any re-encoding.
+
+`compactPreviews()` closes the same invariant's other gap. The worker numbers
+previews by a file's position in the directory listing and then drops any file
+it could not read, which used to leave the manifest counting from 0 with no
+gaps while the previews after the skipped one still sat one place higher. Both
+routes read a photo's index — one as a preview's name, the other as an offset
+into the manifest — so the two have to mean the same thing.
 
 ## Download path
 
@@ -324,7 +375,9 @@ preview already at every index, would reuse them and hand the client a grid
 where each photo after the deleted one shows its neighbour. So the previews are
 *renamed* down one place, which is exactly the shift the worker's own numbering
 performs, and a few renames replace re-encoding the tail of a wedding. The
-archive still holds the deleted photo, so it is removed and the gallery goes
+same shift in the other direction — a photo *added* ahead of ones already here
+— is `server/previews.js`; see "The previews have to move when the order
+does". The archive still holds the deleted photo, so it is removed and the gallery goes
 back to `preparing` for the worker to rebuild — the client sees the "preparing"
 page for as long as that ZIP takes.
 

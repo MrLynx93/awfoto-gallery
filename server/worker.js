@@ -18,6 +18,7 @@ import { db, migrate, close } from './db.js';
 import { findBySlug, markReady, needingWork } from './galleries.js';
 import { makeDerivatives, dimensions } from './images.js';
 import { buildArchive, verifyArchive } from './archive.js';
+import { compactPreviews, reconcilePreviews } from './previews.js';
 import { canFit } from './disk.js';
 import {
   galleryDir,
@@ -78,7 +79,11 @@ const QUIET_PERIOD_MS = 45_000;
 const MAX_WAIT_MS = 20 * 60_000;
 const POLL_MS = 10_000;
 
-/** The grid reads this; nothing else does. One place writes it. */
+/**
+ * The grid reads this, and so does the next run: it is what says which photo
+ * each numbered preview was made from. Written here and in server/previews.js,
+ * in the same shape both times.
+ */
 const writeManifest = (slug, photos) =>
   writeFile(manifestPath(slug), JSON.stringify({ slug, photos }, null, 2) + '\n');
 
@@ -143,9 +148,8 @@ async function processGallery(slug, { log = console.log } = {}) {
   // What the last run recorded. Read before anything decides to return early:
   // it carries the proportions the grid needs, which are cheap to carry forward
   // and a subprocess each to measure again.
-  const previous = await readManifest(slug).catch(() => null);
+  let previous = await readManifest(slug).catch(() => null);
   if (previous) await backfillDimensions(slug, previous, log);
-  const before = new Map((previous?.photos ?? []).map((photo) => [photo.filename, photo]));
 
   // Still arriving? Generate derivatives for what is here, but do not finalise:
   // building the archive now would only mean rebuilding it for the next photo,
@@ -159,6 +163,13 @@ async function processGallery(slug, { log = console.log } = {}) {
   }
 
   await mkdir(previewsDir(slug), { recursive: true });
+
+  // Before a single preview is reused: put them back under the photos they were
+  // made from. The set of originals has usually changed since the last run --
+  // she added the ones she forgot, or a file that sorts early arrived late --
+  // and every position after the first newcomer has moved. See server/previews.js.
+  previous = await reconcilePreviews(slug, files, previous, { log });
+  const before = new Map((previous?.photos ?? []).map((photo) => [photo.filename, photo]));
 
   const photos = [];
   let derivativeBytes = 0;
@@ -227,14 +238,15 @@ async function processGallery(slug, { log = console.log } = {}) {
     return 'done';
   }
 
+  // Written on every run, not only the one that finishes the gallery: it is the
+  // only record of which photo each numbered preview was made from, and the run
+  // after this one needs it to place them. A skipped file is closed over here
+  // too, so a photo's index means the same thing in the manifest and on disk.
+  await compactPreviews(slug, photos);
+  await writeManifest(slug, photos);
+
   // Photos are still landing. Leave the gallery preparing and come back.
   if (!quiet) return 'waiting';
-
-  // Re-index so the manifest is dense: a skipped file must not leave a gap the
-  // grid would render as a broken image.
-  photos.forEach((photo, position) => {
-    photo.index = position;
-  });
 
   let status = 'ready';
   let archiveBytes = 0;
@@ -264,8 +276,6 @@ async function processGallery(slug, { log = console.log } = {}) {
     log(`[worker] ${slug}: over the disk budget — serving without a prebuilt archive`);
     status = 'zip_unavailable';
   }
-
-  await writeManifest(slug, photos);
 
   await markReady(slug, {
     photoCount: photos.length,

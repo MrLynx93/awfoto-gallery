@@ -16,6 +16,9 @@
  * The manifest exists so a gallery page can render its grid from one read
  * instead of a row per photo. The database stays the index — who may see this
  * gallery, when it expires — and the manifest carries the per-photo detail.
+ * It is also the only record of which photo each numbered preview was made
+ * from, which is what lets the worker move them when the order changes rather
+ * than hand a client the photo next door; see server/previews.js.
  */
 import path from 'node:path';
 import { readFile, readdir } from 'node:fs/promises';
@@ -44,7 +47,12 @@ export const previewsDir = (id) => path.join(galleryDir(id), 'previews');
 export const archivePath = (id) => path.join(galleryDir(id), 'archive.zip');
 export const manifestPath = (id) => path.join(galleryDir(id), 'manifest.json');
 
-/** Preview names are generated from the photo's index, never from its filename. */
+/**
+ * Preview names are generated from the photo's index, never from its filename.
+ *
+ * Which makes the numbering shift whenever the set of originals does — see
+ * server/previews.js, which moves them back under their own photos.
+ */
 export function previewPath(id, index, size) {
   if (size !== 'thumb' && size !== 'large') throw new Error(`Unknown size: ${size}`);
   if (!Number.isInteger(index) || index < 0) throw new Error(`Bad index: ${index}`);
@@ -78,9 +86,9 @@ const ORIGINAL_PATTERN = /\.(jpe?g|png)$/i;
  * How far the worker has gotten on a gallery that has not finished yet.
  *
  * Read straight off disk rather than the database, because the worker only
- * writes `photo_count` and the manifest once the whole batch is done --
- * there is nowhere else this number lives while `preparing` is still true.
- * `large.jpg` is the second and last file `makeDerivatives()` writes for a
+ * writes `photo_count` once the whole batch is done, and the manifest only once
+ * per run -- there is nowhere else this number lives while `preparing` is still
+ * true. `large.jpg` is the second and last file `makeDerivatives()` writes for a
  * photo, so counting those counts photos it has actually finished, not ones
  * still mid-resize with only a `thumb.jpg` on disk.
  *
