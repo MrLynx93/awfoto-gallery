@@ -174,13 +174,12 @@ in case more files are still arriving), then rebuilds the archive, and only
 watching it happen, a reload at that point lands on a photo count and an
 archive still missing the photos that just finished. (The manifest is no
 longer one of them — the worker writes it at the end of every run now, not
-only the finishing one, because it is also the record of which photo each
-photo each preview was made from, and the run after it needs that; see "A
-photo is an id".) So the poll's `working` flag compares `gallery.photoCount` (the
-database row) against `total` (disk) instead — the one comparison that is
-only ever satisfied once a finalised run has actually caught up — and only
-then does the page reload, exactly once, to reveal the grid a live patch was
-never going to build.
+only the finishing one, because it is also what the pages render the grid
+from; see "A photo is an id".) So the poll's `working` flag compares
+`gallery.photoCount` (the database row) against `total` (disk) instead — the
+one comparison that is only ever satisfied once a finalised run has actually
+caught up — and only then does the page reload, exactly once, to reveal the
+grid a live patch was never going to build.
 
 That comparison is also what makes the banner appear for a gallery that was
 already `ready`. The row's `status` only ever says `preparing` for a first
