@@ -10,7 +10,7 @@
  * Started two ways, both needed: the tus completion hook spawns it detached,
  * and a five-minute cron re-runs it after a crash or a restart.
  */
-import { mkdir, readdir, writeFile, stat, rm } from 'node:fs/promises';
+import { mkdir, readdir, writeFile, stat, rm, rename } from 'node:fs/promises';
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -31,6 +31,15 @@ import {
 import { STORAGE_ROOT } from './config.js';
 
 const LOCK_PATH = path.join(STORAGE_ROOT, 'worker.lock');
+
+/** Renames, tolerating a preview that was never made (a file the worker skipped). */
+async function moveIfExists(from, to) {
+  try {
+    await rename(from, to);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+}
 
 /**
  * One worker at a time, enforced by an exclusive create.
@@ -147,6 +156,37 @@ async function processGallery(slug, { log = console.log } = {}) {
   if (previous) await backfillDimensions(slug, previous, log);
   const before = new Map((previous?.photos ?? []).map((photo) => [photo.filename, photo]));
 
+  // A photo's identity is its position, and a name dropped in alongside an
+  // existing gallery does not sort to the end just because it arrived last --
+  // "IMG_0050.jpg" added next to "IMG_0900.jpg" lands before it. Every
+  // filename after the insertion point then means a *different* photo at the
+  // index that already has derivatives on disk, and the naive "a preview
+  // already exists here" check below would hand that new filename someone
+  // else's thumbnail instead of ever making its own. So a photo already
+  // known from the last manifest is relocated to wherever it now sorts
+  // before that check ever runs, through a temporary name -- an insertion
+  // can permute several photos at once (not the single contiguous shift a
+  // deletion makes, see server/photos.js), so a plain rename can overwrite
+  // a file another move still needs to read.
+  await mkdir(previewsDir(slug), { recursive: true });
+  const moves = [];
+  files.forEach((filename, newIndex) => {
+    const priorIndex = before.get(filename)?.index;
+    if (Number.isInteger(priorIndex) && priorIndex !== newIndex) {
+      moves.push({ from: priorIndex, to: newIndex });
+    }
+  });
+  for (const { from, to } of moves) {
+    for (const size of ['thumb', 'large']) {
+      await moveIfExists(previewPath(slug, from, size), `${previewPath(slug, to, size)}.tmp`);
+    }
+  }
+  for (const { to } of moves) {
+    for (const size of ['thumb', 'large']) {
+      await moveIfExists(`${previewPath(slug, to, size)}.tmp`, previewPath(slug, to, size));
+    }
+  }
+
   // Still arriving? Generate derivatives for what is here, but do not finalise:
   // building the archive now would only mean rebuilding it for the next photo,
   // and marking the gallery ready would hide the ones still to come.
@@ -157,8 +197,6 @@ async function processGallery(slug, { log = console.log } = {}) {
   if (quiet && gallery.status !== 'preparing' && gallery.photoCount === files.length) {
     return 'idle';
   }
-
-  await mkdir(previewsDir(slug), { recursive: true });
 
   const photos = [];
   let derivativeBytes = 0;
@@ -171,13 +209,21 @@ async function processGallery(slug, { log = console.log } = {}) {
   for (const [index, filename] of files.entries()) {
     const src = path.join(originals, filename);
     try {
-      // Already has both derivatives from an earlier run: count it, skip the work.
+      // Already has both derivatives from an earlier run: count it, skip the
+      // work. Gated on this filename being one the last manifest already
+      // knew -- not just on a file sitting at this path -- because the
+      // rename pass above is what guarantees a known filename's derivatives
+      // are the ones now sitting at its (possibly new) index; nothing
+      // relocates derivatives for a filename this run has never seen. A file
+      // existing here that belongs to no known filename (an original removed
+      // outside removePhoto(), say) must never be handed to a different one;
+      // makeDerivatives() below overwrites it instead of trusting it.
       const thumb = previewPath(slug, index, 'thumb');
       const large = previewPath(slug, index, 'large');
-      const existing = await Promise.all([
-        stat(thumb).catch(() => null),
-        stat(large).catch(() => null),
-      ]);
+      const known = before.get(filename);
+      const existing = known
+        ? await Promise.all([stat(thumb).catch(() => null), stat(large).catch(() => null)])
+        : [null, null];
 
       if (existing[0] && existing[1]) {
         originalBytes += (await stat(src)).size;
@@ -187,7 +233,6 @@ async function processGallery(slug, { log = console.log } = {}) {
         // the thumbnail when it does not -- the thumbnail rather than the
         // original because it is the orientation the grid will draw, and
         // because measuring a 500 px JPEG costs nothing next to a 45 MP one.
-        const known = before.get(filename);
         const size = measured(known)
           ? { width: known.width, height: known.height }
           : await dimensions(thumb).catch(() => ({ width: null, height: null }));

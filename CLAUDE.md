@@ -328,6 +328,44 @@ archive still holds the deleted photo, so it is removed and the gallery goes
 back to `preparing` for the worker to rebuild — the client sees the "preparing"
 page for as long as that ZIP takes.
 
+**The same hazard exists on the way in, and for a long time nothing in
+`server/worker.js` guarded against it.** Adding a photo to a gallery that
+already has one does not append it: the worker re-sorts `originals/` by name
+on every run, and a name does not sort to the end just because it arrived
+last -- dropping `IMG_0050.jpg` next to an existing `IMG_0900.jpg` inserts it
+near the front. Every filename after that point then means a *different*
+photo at the index that already has derivatives on disk from the previous
+run, and the worker's own "a preview already exists here, skip the work"
+check took that as license to reuse them -- handing the newly-added filename
+someone else's thumbnail (with someone else's aspect ratio) while the actual
+new file was never processed at all. Confirmed by reproducing it directly, not
+suspected from reading the code: adding a photo whose name sorted before an
+existing one left the grid showing the old photo twice and the new one
+nowhere, with the manifest recording the wrong dimensions for it besides.
+
+The fix runs before that reuse check ever fires: any filename the previous
+manifest already knew about is relocated to wherever it now sorts, through a
+temporary name, before anything is skipped or generated. Unlike the single
+contiguous shift a deletion performs, an insertion can permute several
+photos in one run (two files can each need to move into the slot the other
+just vacated), so a plain `rename()` risks one move overwriting a file
+another move still has to read -- hence the temporary name, in two passes.
+The reuse check itself is also gated on the filename actually being one the
+previous manifest recognised, not merely on a file sitting at that path, so
+a stray leftover a rename cannot account for is never handed to the wrong
+photo; `makeDerivatives()` overwrites it instead of trusting it. A photo
+whose name and position are both unchanged still costs nothing beyond the
+check itself -- only a genuinely new file, or one that had to move, does any
+real work.
+
+`GalleryGrid.astro`'s `<img>` also carries `object-fit: cover` now, as a
+second, independent line of defence: if a manifest entry is ever wrong again
+-- this bug or a different one -- the image is cropped slightly rather than
+stretched into a shape it was never shot at. Invisible whenever `--ar` is
+correct, since a box sized to the image's own ratio needs no cropping to
+fill it; a photographer would rather lose a sliver off one edge than see a
+portrait squashed into a landscape box.
+
 A whole gallery can go too, for the session that is finished before its term or
 the one uploaded twice. It goes through `server/removal.js`, in the order the
 nightly sweep will want: condemn the row, then the files, then the row itself —

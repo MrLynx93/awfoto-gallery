@@ -21,11 +21,19 @@
  * for the row itself to go.
  *
  * So this is a CSS multi-column layout instead: fixed-width columns, each
- * photo shown at its own true aspect ratio with **no cropping at all** --
- * there is no row for it to match anymore, so nothing forces one. `columns`
- * plus `break-inside: avoid` is the whole layout; the browser decides how
- * many columns fit and stacks each photo under the shortest one, same as it
- * decided line breaks before. Nothing here measures or recomputes on resize.
+ * photo shown at its own true aspect ratio -- there is no row for it to
+ * match anymore, so nothing forces one. `columns` plus `break-inside: avoid`
+ * is the whole layout; the browser decides how many columns fit and stacks
+ * each photo under the shortest one, same as it decided line breaks before.
+ * Nothing here measures or recomputes on resize.
+ *
+ * No cropping happens in the normal case: the box is sized from the exact
+ * ratio the manifest recorded, so the image fills it exactly. `object-fit:
+ * cover` on the `<img>` is only a safety net for when that ratio is wrong --
+ * a manifest entry left over from a photo that used to occupy this index,
+ * say -- and would otherwise stretch or squash the image into a shape it was
+ * never shot at, which looks broken in a way a slight, invisible-in-practice
+ * crop does not.
  *
  * The trade a masonry column always makes: reading order runs down one
  * column before starting the next, not left-to-right across a row. A
@@ -244,12 +252,20 @@ const tiles = photos.map((photo, index) => ({ index, ratio: ratioOf(photo).toFix
   }
   .photo img {
     /* The aspect-ratio reserves the photo's true shape before it loads --
-       there is no cropping left to do, so the image is simply shown at the
-       width its column gives it and whatever height that ratio implies. */
+       there is no cropping left to do when --ar is right, so the image is
+       simply shown at the width its column gives it and whatever height
+       that ratio implies. `object-fit: cover` is a safety net for when it
+       is not: a manifest entry that does not match the file it describes
+       (a stale one carried over from a photo that used to sit at this
+       index, say) would otherwise squash or stretch the image to fit a box
+       shaped for a different photo, which reads as broken in a way a slight
+       crop does not. Invisible whenever --ar is correct, since a box sized
+       to the image's own ratio needs no cropping to fill it. */
     display: block;
     width: 100%;
     height: auto;
     aspect-ratio: var(--ar, 1.5);
+    object-fit: cover;
     transition: transform 0.6s cubic-bezier(0.2, 0, 0.2, 1);
   }
   .photo:hover img {
