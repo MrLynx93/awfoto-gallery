@@ -27,8 +27,11 @@ import {
   originalsDir,
   previewsDir,
   previewPath,
+  originalPath,
+  photoRecordPath,
   manifestPath,
 } from '../server/storage.js';
+import { newPhotoId } from '../server/photos.js';
 
 const run = promisify(execFile);
 
@@ -95,14 +98,22 @@ await mkdir(previewsDir(GALLERY_ID), { recursive: true });
 
 const photos = [];
 for (const [index, src] of sources.entries()) {
-  // The name the client will see in their downloads folder. The demo invents
-  // one that looks like a camera export, since the placeholders are all
-  // called image.jpg and would collide.
+  // Exactly what the upload hook does: an id for the photograph, the bytes
+  // filed under it, and her exported name kept beside them as a record. The
+  // demo invents a camera-looking name because the placeholders are all called
+  // image.jpg -- which the gallery now handles, but which would make a demo
+  // where every tile is captioned the same thing.
+  const id = newPhotoId();
   const filename = `AWF_${String(index + 1).padStart(4, '0')}.jpg`;
-  await copyFile(src, path.join(originalsDir(GALLERY_ID), filename));
-  await derive(cli, src, previewPath(GALLERY_ID, index, 'thumb'), THUMB);
-  await derive(cli, src, previewPath(GALLERY_ID, index, 'large'), LARGE);
-  photos.push({ index, filename, bytes: (await stat(src)).size });
+
+  await copyFile(src, originalPath(GALLERY_ID, id, '.jpg'));
+  await writeFile(
+    photoRecordPath(GALLERY_ID, id),
+    JSON.stringify({ id, filename, ext: '.jpg', uploadedAt: new Date().toISOString() }) + '\n',
+  );
+  await derive(cli, src, previewPath(GALLERY_ID, id, 'thumb'), THUMB);
+  await derive(cli, src, previewPath(GALLERY_ID, id, 'large'), LARGE);
+  photos.push({ id, filename, ext: '.jpg', bytes: (await stat(src)).size });
 }
 
 // A real password, and a real row. The demo exercises the actual gate rather
@@ -119,7 +130,7 @@ const { slug } = await create({
 // gallery is authorised against.
 await writeFile(
   manifestPath(GALLERY_ID),
-  JSON.stringify({ id: GALLERY_ID, slug, photos }, null, 2) + '\n',
+  JSON.stringify({ slug, photos }, null, 2) + '\n',
 );
 
 const bytesTotal = photos.reduce((sum, photo) => sum + photo.bytes, 0);

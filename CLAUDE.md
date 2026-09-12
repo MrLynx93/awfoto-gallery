@@ -175,8 +175,8 @@ watching it happen, a reload at that point lands on a photo count and an
 archive still missing the photos that just finished. (The manifest is no
 longer one of them — the worker writes it at the end of every run now, not
 only the finishing one, because it is also the record of which photo each
-numbered preview belongs to; see "The previews have to move when the order
-does".) So the poll's `working` flag compares `gallery.photoCount` (the
+photo each preview was made from, and the run after it needs that; see "A
+photo is an id".) So the poll's `working` flag compares `gallery.photoCount` (the
 database row) against `total` (disk) instead — the one comparison that is
 only ever satisfied once a finalised run has actually caught up — and only
 then does the page reload, exactly once, to reveal the grid a live patch was
@@ -200,53 +200,89 @@ working" would show a bar stuck at 0% forever instead of the actual failure
 message. A retry after a failure has the same small, accepted gap as before:
 no live progress shows until that new run's own `markReady()` lands.
 
-## The previews have to move when the order does
+## A photo is an id
 
-A photo's identity is its position. The worker lists the originals in name
-order and writes previews as `<n>-thumb.jpg`, which is what lets a route serve
-`/g/:slug/p/4/thumb.jpg` without looking anything up — and it means the
-numbering only holds still while the *set* of originals does.
+Every photo is given a random 12-character id the moment its bytes land
+(`newPhotoId()` in `server/photos.js`, called from the tus completion hook),
+and that id is what everything names it by:
 
-It does not. She adds the three photos she forgot, `DSC_0100.jpg` sorts ahead
-of half the wedding, and every photo after it moves up one place. A first
-batch does it too, because files land in the order the uploads finish rather
-than the order the names sort in, and every run re-reads the directory.
+```
+STORAGE_ROOT/galleries/<slug>/
+  originals/<id>.jpg       the uploaded bytes
+  originals/<id>.json      {id, filename, ext, uploadedAt}
+  previews/<id>-thumb.jpg  grid
+  previews/<id>-large.jpg  lightbox
+```
 
-Left alone, the worker's own incremental check — "position 4 already has both
-derivatives, skip it" — then keeps every preview exactly where it was, and the
-grid comes out one place out: each tile shows its neighbour's photograph, the
-last photo appears twice, the newly added one is nowhere, and every tile is
-drawn stretched to proportions belonging to a different frame, since the
-manifest's `width`/`height` travel with the filename while the image travels
-with the position. Nothing fails; the gallery is simply wrong. That happened,
-and `scripts/check-preview-order.mjs` (`npm run check:previews`) exists so it
-cannot happen quietly again.
+— and `/g/:slug/p/<id>/thumb.jpg`, `/g/:slug/photo/<id>`, the manifest entry,
+the delete button. Nothing anywhere is derived from something that can change
+afterwards.
 
-`server/previews.js` is the fix, and it is the move `server/photos.js` already
-makes for a delete: *rename* the previews into their new positions rather than
-re-encode them. `reconcilePreviews()` runs before anything reuses a preview,
-renaming through a staging name — a shift is a permutation, so one move's
-source is usually another move's target — and then deleting every numbered
-preview no current photo claims: the leftovers of a deleted original, or one
-made for a position that now holds someone else. A few renames replace putting
-the tail of a wedding back through ImageMagick.
+Both of the obvious alternatives were tried in this codebase, and both are
+wrong:
 
-Which photo a numbered preview was made from is not written on the file, so
-**the manifest is that record**, and that is why the worker writes it at the
-end of every run now rather than only the run that finishes the gallery: a
-batch still arriving has to leave behind something that says what is on disk.
-`reconcilePreviews()` rewrites it in the same breath as the renames, so a run
-killed in between leaves the two still agreeing with each other. Previews with
-no manifest to place them are remade rather than guessed at — a preview under
-the wrong photo is worse than no preview at all — and that is the only case
-here that costs any re-encoding.
+- **Its position.** Previews used to be `<n>-thumb.jpg` with `n` the photo's
+  place in the sorted directory listing. Adding a photo that sorts ahead of
+  others then moved every position after it, and the worker's incremental check
+  ("position 4 already has derivatives, skip it") kept each preview where it
+  was: the grid showed every tile shifted by one, the last photo twice, the new
+  photo nowhere, and each frame drawn at the proportions of a different one.
+  Nothing failed — the gallery was simply wrong. It also cost a rename-the-tail
+  pass on delete and another on insert, and a compaction step whenever the
+  worker skipped an unreadable file.
+- **Its filename.** Stable under insertion, but it makes two photographs with
+  the same name one photograph — and two cards in one camera bag both hold a
+  `DSC_0001.jpg`. Under a name-keyed scheme the second upload overwrites the
+  first, or worse, inherits its preview. **Two files with the same name are two
+  photos here**, both shown, both downloadable.
 
-`compactPreviews()` closes the same invariant's other gap. The worker numbers
-previews by a file's position in the directory listing and then drops any file
-it could not read, which used to leave the manifest counting from 0 with no
-gaps while the previews after the skipped one still sat one place higher. Both
-routes read a photo's index — one as a preview's name, the other as an offset
-into the manifest — so the two have to mean the same thing.
+So the name she exported is *metadata*: it decides what the client's downloads
+folder shows and nothing else. It never reaches the filesystem, which is also
+why `originalPath()` no longer has to defend against `../../.env` — that string
+has nowhere to be constructed rather than somewhere to be caught.
+
+**The record is `originals/<id>.json`**, written by the upload hook immediately
+after the bytes are renamed into place. Bytes first, record second, and the
+order matters: `listPhotos()` counts records, so a process killed between the
+two leaves a file nothing claims — named in the worker's log — rather than a
+photo promising bytes that are not there. tus only reports success once both
+have landed, so she sees a failed file and retries.
+
+**Order is not identity.** `listPhotos()` sorts by the exported filename, which
+for a Lightroom export is chronological, then by upload time, then by id — so
+two photos sharing a name still have one stable order rather than whatever the
+directory hands back that run. Adding a photo changes where the others are
+drawn; it changes nothing about what any of them *is*.
+
+The ZIP is the one place the display name has to come back. `zip` cannot rename
+an entry, so `buildArchive()` stages a directory of **hard links** carrying the
+exported names and zips that instead — free and instant for a 12 GB wedding,
+where a copy would be exactly the doubling the disk budget exists to prevent.
+A repeated name is numbered there, `DSC_0001 (2).jpg`, because two identical
+entry names in one archive is a client who silently ends up with one of them.
+The archive is also removed before it is rebuilt: `zip` *updates* an existing
+file, which would carry entries from the last build, deleted photos included.
+
+What this removes, rather than adds: the rename-the-tail dance on delete, the
+reconcile pass on insert, the compaction after a skipped file, and
+`backfillDimensions()`. Deleting a photo is four unlinks and one manifest entry
+gone; every other photo keeps its own files, untouched. The worker's only
+remaining sweep is for previews whose photo no longer exists — which nothing
+routine produces, and which can no longer be mistaken for another photo's.
+
+**There is no migration from the old layout, and `npm run reset` is the
+upgrade.** It drops every table and removes every file under `STORAGE_ROOT`,
+and the next boot re-runs the migrations from the top. That is a deliberate
+trade: this is a delivery tool holding a few weeks of sessions, and rewriting a
+live layout in place is a worse risk than re-uploading what is still current.
+The originals are the only copy on the server, so whatever a client has not
+downloaded is gone — check `/admin` first.
+
+`scripts/check-photo-identity.mjs` (`npm run check:photos`) holds the whole
+contract down: the same filename twice is two photographs, adding a photo
+leaves every other photo's files exactly where they were, deleting one touches
+only its own, an id can never name a file outside its gallery, and the archive
+round-trips through real `zip`/`unzip` with the duplicate numbered.
 
 ## Download path
 
@@ -367,19 +403,15 @@ A gallery that has expired should show a friendly "this gallery has expired, con
 the photographer" page — not a 404.
 
 A single photo can go too, from the gallery's own page: a small × on each tile,
-handled by `server/photos.js`. The subtlety worth knowing before touching that
-file is that **a photo's identity is its position**. The worker lists the
-originals in name order and writes previews as `<n>-thumb.jpg`, so removing one
-from the middle shifts everything after it — and the next worker run, finding a
-preview already at every index, would reuse them and hand the client a grid
-where each photo after the deleted one shows its neighbour. So the previews are
-*renamed* down one place, which is exactly the shift the worker's own numbering
-performs, and a few renames replace re-encoding the tail of a wedding. The
-same shift in the other direction — a photo *added* ahead of ones already here
-— is `server/previews.js`; see "The previews have to move when the order
-does". The archive still holds the deleted photo, so it is removed and the gallery goes
-back to `preparing` for the worker to rebuild — the client sees the "preparing"
-page for as long as that ZIP takes.
+handled by `server/photos.js`. It is four unlinks — the original, its record,
+its two previews — and one entry dropped from the manifest, because a photo is
+an id and nothing else is named after where it sat (see "A photo is an id",
+which is also the history of why this used to be harder). The × posts that id
+rather than a position, so a page left open while another tab deleted something
+cannot remove the photograph beside the one she meant. The archive still holds
+the deleted photo, so it is removed and the gallery goes back to `preparing`
+for the worker to rebuild — the client sees the "preparing" page for as long as
+that ZIP takes.
 
 A whole gallery can go too, for the session that is finished before its term or
 the one uploaded twice. It goes through `server/removal.js`, in the order the
@@ -465,12 +497,12 @@ of matching them, and it is the trade that was asked for.
   EXIF rotation reports the shape the grid will actually draw — which
   `identify` on the original gets backwards, tilting every such photo. It is
   also cheaper than reading a 45 MP file twice.
-- A manifest written before dimensions were tracked has `null` for both on any
-  photo whose derivatives an earlier run reused. The grid assumes 3:2 where it
-  has nothing, and the worker repairs it: `backfillDimensions()` runs before
-  the "nothing to do" return, measures the thumbnails that already exist, and
-  rewrites the manifest without re-encoding anything or touching the ZIP. Once
-  per gallery, then never again.
+- `null` for both is what a photo the worker could not measure carries, and
+  the grid assumes 3:2 there. It is close to unreachable now: the worker
+  measures every thumbnail it writes, and re-measures one it reuses whenever
+  the last manifest has no dimensions for that id — `backfillDimensions()`, a
+  repair pass for manifests written before dimensions were tracked, went with
+  the layout those manifests belonged to.
 
 ## The galleries list gives the name column the room
 

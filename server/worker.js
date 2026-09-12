@@ -9,20 +9,24 @@
  *
  * Started two ways, both needed: the tus completion hook spawns it detached,
  * and a five-minute cron re-runs it after a crash or a restart.
+ *
+ * Every photo is addressed by its id (server/photos.js), which is what makes
+ * this safe to re-run at any moment: the work it skips is "this photo already
+ * has its derivatives", a question about the photograph itself rather than
+ * about a position that another photo may have moved into since.
  */
 import { mkdir, readdir, writeFile, stat, rm } from 'node:fs/promises';
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 
-import { db, migrate, close } from './db.js';
+import { migrate, close } from './db.js';
 import { findBySlug, markReady, needingWork } from './galleries.js';
 import { makeDerivatives, dimensions } from './images.js';
 import { buildArchive, verifyArchive } from './archive.js';
-import { compactPreviews, reconcilePreviews } from './previews.js';
 import { canFit } from './disk.js';
 import {
-  galleryDir,
-  originalsDir,
+  listPhotos,
+  originalPath,
   previewsDir,
   previewPath,
   archivePath,
@@ -80,45 +84,40 @@ const MAX_WAIT_MS = 20 * 60_000;
 const POLL_MS = 10_000;
 
 /**
- * The grid reads this, and so does the next run: it is what says which photo
- * each numbered preview was made from. Written here and in server/previews.js,
- * in the same shape both times.
+ * The grid reads this, in the order it draws. Written at the end of every run,
+ * not only the run that finishes the gallery: it is what the pages render
+ * from, and a batch that is still arriving should still show what is ready.
  */
 const writeManifest = (slug, photos) =>
   writeFile(manifestPath(slug), JSON.stringify({ slug, photos }, null, 2) + '\n');
 
+/** A manifest entry the grid can lay out without guessing. */
 const measured = (photo) => Number(photo?.width) > 0 && Number(photo?.height) > 0;
 
-/**
- * Records the proportions of photos in a manifest written before the grid had
- * any use for them.
- *
- * The grid lays rows out from each photo's aspect ratio and assumes 3:2 where it
- * has none, which would show a portrait frame cropped for as long as the
- * manifest stayed silent -- and a settled gallery never reaches the resize loop
- * below that would fill it in. So this repairs it in place: a few `identify`
- * calls against thumbnails that already exist, no re-encoding, and the ZIP
- * untouched. It runs once per gallery and is a no-op on every run after.
- */
-async function backfillDimensions(slug, manifest, log) {
-  const missing = (manifest.photos ?? []).filter((photo) => !measured(photo));
-  if (missing.length === 0) return;
+const PREVIEW_PATTERN = /^(.+)-(thumb|large)\.jpg$/;
 
-  let filled = 0;
-  for (const photo of missing) {
-    try {
-      const { width, height } = await dimensions(previewPath(slug, photo.index, 'thumb'));
-      photo.width = width;
-      photo.height = height;
-      filled += 1;
-    } catch {
-      // No thumbnail for it yet -- the loop below will make one and measure it.
-    }
+/**
+ * Previews belonging to no photo this gallery still has.
+ *
+ * Nothing routine produces these -- a delete takes its own four files with it
+ * -- so this is for the half-finished ones: a delete interrupted between two
+ * unlinks, or an original removed from under the application. Left alone they
+ * would cost disk and nothing else. They cannot be served (no manifest entry
+ * names them) and they cannot be mistaken for another photo's, which is the
+ * part that used to hurt.
+ */
+async function sweepOrphanPreviews(slug, photos, log) {
+  const live = new Set(photos.map((photo) => photo.id));
+
+  let swept = 0;
+  for (const name of await readdir(previewsDir(slug)).catch(() => [])) {
+    const match = PREVIEW_PATTERN.exec(name);
+    if (!match || live.has(match[1])) continue;
+    await rm(path.join(previewsDir(slug), name), { force: true });
+    swept += 1;
   }
 
-  if (filled === 0) return;
-  await writeManifest(slug, manifest.photos);
-  log(`[worker] ${slug}: recorded proportions for ${filled} photo(s)`);
+  if (swept > 0) log(`[worker] ${slug}: removed ${swept} preview(s) with no photo behind them`);
 }
 
 /**
@@ -127,29 +126,28 @@ async function backfillDimensions(slug, manifest, log) {
  * Returns 'done' when the gallery is finished, 'waiting' when photos are still
  * arriving and it should be revisited, or 'idle' when there was nothing to do.
  *
- * Derivatives are made incrementally -- only for originals that do not have
- * them yet -- so this is safe to run repeatedly while an upload is in progress,
- * and previews appear as photos land rather than all at the end.
+ * Derivatives are made incrementally -- only for photos that do not have them
+ * yet -- so this is safe to run repeatedly while an upload is in progress, and
+ * previews appear as photos land rather than all at the end.
  */
 async function processGallery(slug, { log = console.log } = {}) {
   const gallery = await findBySlug(slug);
   if (!gallery) return 'idle';
 
-  const originals = originalsDir(slug);
-  let files;
-  try {
-    files = (await readdir(originals)).filter((f) => /\.(jpe?g|png)$/i.test(f)).sort();
-  } catch {
-    // Created by the first completed upload; nothing has landed yet.
-    return 'idle';
-  }
-  if (files.length === 0) return 'idle';
+  // Disk is the truth, and one record per photo is what it says. A record
+  // whose bytes never arrived is named rather than silently skipped: it is the
+  // only trace of an upload hook that died mid-move.
+  const uploaded = await listPhotos(slug, {
+    onIncomplete: (record) =>
+      log(`[worker] ${slug}: no bytes for ${record.filename ?? record.id} — upload interrupted`),
+  });
+  if (uploaded.length === 0) return 'idle';
 
-  // What the last run recorded. Read before anything decides to return early:
-  // it carries the proportions the grid needs, which are cheap to carry forward
-  // and a subprocess each to measure again.
-  let previous = await readManifest(slug).catch(() => null);
-  if (previous) await backfillDimensions(slug, previous, log);
+  // What the last run recorded, keyed by id: it carries the proportions the
+  // grid needs, which are cheap to carry forward and a subprocess each to
+  // measure again.
+  const previous = await readManifest(slug).catch(() => null);
+  const before = new Map((previous?.photos ?? []).map((photo) => [photo.id, photo]));
 
   // Still arriving? Generate derivatives for what is here, but do not finalise:
   // building the archive now would only mean rebuilding it for the next photo,
@@ -158,18 +156,11 @@ async function processGallery(slug, { log = console.log } = {}) {
   const quiet = Date.now() - lastUpload > QUIET_PERIOD_MS;
 
   // Nothing new since the last run, and already finished.
-  if (quiet && gallery.status !== 'preparing' && gallery.photoCount === files.length) {
+  if (quiet && gallery.status !== 'preparing' && gallery.photoCount === uploaded.length) {
     return 'idle';
   }
 
   await mkdir(previewsDir(slug), { recursive: true });
-
-  // Before a single preview is reused: put them back under the photos they were
-  // made from. The set of originals has usually changed since the last run --
-  // she added the ones she forgot, or a file that sorts early arrived late --
-  // and every position after the first newcomer has moved. See server/previews.js.
-  previous = await reconcilePreviews(slug, files, previous, { log });
-  const before = new Map((previous?.photos ?? []).map((photo) => [photo.filename, photo]));
 
   const photos = [];
   let derivativeBytes = 0;
@@ -179,58 +170,56 @@ async function processGallery(slug, { log = console.log } = {}) {
   // processes in total, shared with Passenger and cron, so fanning out would
   // starve the web server that still has to answer clients.
   let made = 0;
-  for (const [index, filename] of files.entries()) {
-    const src = path.join(originals, filename);
+  for (const record of uploaded) {
+    const src = originalPath(slug, record.id, record.ext);
     try {
-      // Already has both derivatives from an earlier run: count it, skip the work.
-      const thumb = previewPath(slug, index, 'thumb');
-      const large = previewPath(slug, index, 'large');
+      // Already has both derivatives from an earlier run: count it, skip the
+      // work. The question is about this photo, so the answer stays right no
+      // matter what has been added or removed around it.
+      const thumb = previewPath(slug, record.id, 'thumb');
+      const large = previewPath(slug, record.id, 'large');
       const existing = await Promise.all([
         stat(thumb).catch(() => null),
         stat(large).catch(() => null),
       ]);
 
+      const bytes = (await stat(src)).size;
+      let size;
+
       if (existing[0] && existing[1]) {
-        originalBytes += (await stat(src)).size;
         derivativeBytes += existing[0].size + existing[1].size;
 
         // Proportions come from the last manifest when it has them, and from
         // the thumbnail when it does not -- the thumbnail rather than the
         // original because it is the orientation the grid will draw, and
         // because measuring a 500 px JPEG costs nothing next to a 45 MP one.
-        const known = before.get(filename);
-        const size = measured(known)
+        const known = before.get(record.id);
+        size = measured(known)
           ? { width: known.width, height: known.height }
           : await dimensions(thumb).catch(() => ({ width: null, height: null }));
-
-        photos.push({
-          index,
-          filename,
-          width: size.width,
-          height: size.height,
-          bytes: (await stat(src)).size,
-        });
-        continue;
+      } else {
+        made += 1;
+        const result = await makeDerivatives(src, (which) => previewPath(slug, record.id, which));
+        derivativeBytes += result.bytes;
+        size = { width: result.width, height: result.height };
       }
 
-      made += 1;
-      const result = await makeDerivatives(src, (size) => previewPath(slug, index, size));
-      originalBytes += (await stat(src)).size;
-      derivativeBytes += result.bytes;
+      originalBytes += bytes;
       photos.push({
-        index,
-        filename,
-        width: result.width,
-        height: result.height,
-        bytes: (await stat(src)).size,
+        id: record.id,
+        filename: record.filename,
+        ext: record.ext,
+        width: size.width,
+        height: size.height,
+        bytes,
       });
     } catch (error) {
       // One unreadable file should not cost the client the other 799.
-      log(`[worker] ${slug}: skipping ${filename} — ${error.message.split('\n')[0]}`);
+      log(`[worker] ${slug}: skipping ${record.filename ?? record.id} — ${error.message.split('\n')[0]}`);
     }
   }
 
-  if (made > 0) log(`[worker] ${slug}: prepared ${made} of ${files.length} photos`);
+  if (made > 0) log(`[worker] ${slug}: prepared ${made} of ${uploaded.length} photos`);
 
   if (photos.length === 0) {
     await markReady(slug, { photoCount: 0, bytesTotal: 0, status: 'failed' });
@@ -238,11 +227,7 @@ async function processGallery(slug, { log = console.log } = {}) {
     return 'done';
   }
 
-  // Written on every run, not only the one that finishes the gallery: it is the
-  // only record of which photo each numbered preview was made from, and the run
-  // after this one needs it to place them. A skipped file is closed over here
-  // too, so a photo's index means the same thing in the manifest and on disk.
-  await compactPreviews(slug, photos);
+  await sweepOrphanPreviews(slug, photos, log);
   await writeManifest(slug, photos);
 
   // Photos are still landing. Leave the gallery preparing and come back.
@@ -253,7 +238,16 @@ async function processGallery(slug, { log = console.log } = {}) {
 
   if (await canFit(originalBytes)) {
     try {
-      const archive = await buildArchive(originals, archivePath(slug));
+      // Entry names are the filenames she exported, not the ids the bytes are
+      // stored under -- the client's downloads folder is the whole point of
+      // keeping those names at all.
+      const archive = await buildArchive(
+        photos.map((photo) => ({
+          path: originalPath(slug, photo.id, photo.ext),
+          name: photo.filename,
+        })),
+        archivePath(slug),
+      );
       archiveBytes = archive.bytes;
 
       // Names stored as raw UTF-8 without the flag reach Windows as mojibake.
@@ -286,6 +280,7 @@ async function processGallery(slug, { log = console.log } = {}) {
   log(`[worker] ${slug}: ${status}, ${photos.length} photos`);
   return 'done';
 }
+
 
 export async function runOnce({ log = console.log } = {}) {
   if (!(await acquireLock())) {

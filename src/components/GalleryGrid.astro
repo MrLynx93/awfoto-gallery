@@ -34,6 +34,8 @@
  * matching them, and it is what was asked for.
  */
 interface PhotoMeta {
+  /** The photo's id: what every URL here names it by. See server/photos.js. */
+  id: string;
   /** From the manifest. Null for a photo the worker could not measure. */
   width?: number | null;
   height?: number | null;
@@ -41,7 +43,11 @@ interface PhotoMeta {
 
 interface Props {
   slug: string;
-  /** The manifest's photos, in order -- a photo's identity is its position. */
+  /**
+   * The manifest's photos, in the order they should be shown. Order is the
+   * gallery's, identity is the id -- adding or removing a photo moves the rest
+   * along without changing what any of them is.
+   */
   photos: PhotoMeta[];
   /**
    * The panel passes this; the client's page never does. It puts a small × on
@@ -78,7 +84,11 @@ function ratioOf(photo: PhotoMeta): number {
   return width / height;
 }
 
-const tiles = photos.map((photo, index) => ({ index, ratio: ratioOf(photo).toFixed(3) }));
+const tiles = photos.map((photo, index) => ({
+  index,
+  id: photo.id,
+  ratio: ratioOf(photo).toFixed(3),
+}));
 ---
 
 <div class="grid-frame">
@@ -92,17 +102,21 @@ const tiles = photos.map((photo, index) => ({ index, ratio: ratioOf(photo).toFix
     <slot name="lead" />
 
     {
-      tiles.map(({ index, ratio }) => (
+      tiles.map(({ index, id, ratio }) => (
         <div class="tile" style={`--ar: ${ratio}`}>
+          {/* Two different things, both needed: the index is where this tile
+              sits, which is what the lightbox steps through, and the id is
+              which photograph it is, which is what every URL names. */}
           <button
             class="photo"
             type="button"
             data-lightbox-index={index}
+            data-photo-id={id}
             aria-label={`Powiększ zdjęcie ${index + 1} z ${count}`}
           >
             <img
-              src={`/g/${slug}/p/${index}/thumb.jpg`}
-              srcset={`/g/${slug}/p/${index}/thumb.jpg 500w, /g/${slug}/p/${index}/large.jpg 2048w`}
+              src={`/g/${slug}/p/${id}/thumb.jpg`}
+              srcset={`/g/${slug}/p/${id}/thumb.jpg 500w, /g/${slug}/p/${id}/large.jpg 2048w`}
               sizes="(max-width: 700px) 100vw, (max-width: 1000px) 50vw, min(26vw, 24rem)"
               alt={`Zdjęcie ${index + 1}`}
               loading={index < 4 ? 'eager' : 'lazy'}
@@ -113,10 +127,11 @@ const tiles = photos.map((photo, index) => ({ index, ratio: ratioOf(photo).toFix
           {deletable && (
             /* A form rather than a button with a fetch behind it: this page
                already answers POSTs, and it keeps working with no JavaScript.
-               The index is the photo's identity -- see server/photos.js. */
+               It posts the id, so a photo added or removed in another tab
+               cannot turn this into a delete of the photograph beside it. */
             <form class="remove" method="POST" data-confirm={`Usunąć zdjęcie ${index + 1}?`}>
               <input type="hidden" name="intent" value="delete-photo" />
-              <input type="hidden" name="index" value={index} />
+              <input type="hidden" name="id" value={id} />
               <button type="submit" aria-label={`Usuń zdjęcie ${index + 1}`} title="Usuń to zdjęcie">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m6 6 12 12M18 6 6 18" />

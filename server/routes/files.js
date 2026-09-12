@@ -14,9 +14,9 @@ import express from 'express';
 import path from 'node:path';
 
 import {
-  readManifest,
   previewPath,
   originalPath,
+  readPhotoRecord,
   archivePath,
 } from '../storage.js';
 import { findBySlug, isExpired } from '../galleries.js';
@@ -99,33 +99,40 @@ function send(res, file, { download } = {}) {
 // `:file` rather than `:size(thumb|large).jpg`: Express 5 moved to
 // path-to-regexp v8, which dropped inline regex in parameters. Validating here
 // is equivalent and the allowlist is visible at the point of use.
-filesRouter.get('/g/:slug/p/:index/:file', async (req, res) => {
+//
+// `:photo` is the photo's id (server/photos.js), so the path is built from it
+// directly with no lookup -- and `previewPath` refuses anything outside the
+// character set those ids are minted from.
+filesRouter.get('/g/:slug/p/:photo/:file', async (req, res) => {
   if (!(await authorise(req, res))) return;
 
   const size = { 'thumb.jpg': 'thumb', 'large.jpg': 'large' }[req.params.file];
-  const index = Number(req.params.index);
-  if (!size || !Number.isInteger(index)) return res.status(404).end();
+  if (!size) return res.status(404).end();
 
-  send(res, previewPath(req.params.slug, index, size));
+  try {
+    send(res, previewPath(req.params.slug, req.params.photo, size));
+  } catch {
+    res.status(404).end();
+  }
 });
 
-filesRouter.get('/g/:slug/photo/:index', async (req, res) => {
+filesRouter.get('/g/:slug/photo/:photo', async (req, res) => {
   if (!(await authorise(req, res))) return;
 
-  // The filename comes from the manifest, so a caller cannot name the file it
-  // wants -- only its position in the gallery.
-  let photo;
+  // The record written when the bytes landed. A caller names a photo, never a
+  // file: the path is its id plus the extension recorded here, and the name
+  // she exported is a value in this record rather than anything on disk.
+  let record;
   try {
-    photo = (await readManifest(req.params.slug)).photos?.[Number(req.params.index)];
+    record = await readPhotoRecord(req.params.slug, req.params.photo);
   } catch {
     return res.status(404).end();
   }
-  if (!photo) return res.status(404).end();
 
-  // The filename she exported from Lightroom is what the client expects to see
-  // in their downloads folder, so it is preserved rather than machine-named.
-  send(res, originalPath(req.params.slug, photo.filename), {
-    download: photo.filename,
+  // That exported name is what the client expects to see in their downloads
+  // folder, so it is what the attachment is called.
+  send(res, originalPath(req.params.slug, record.id, record.ext), {
+    download: record.filename,
   });
 });
 
@@ -134,8 +141,10 @@ filesRouter.get('/g/:slug/zip', async (req, res) => {
   if (!gallery) return;
 
   // ASCII-folded, because the download name crosses Content-Disposition and
-  // lands on the client's filesystem — the archive's *contents* keep their
-  // Polish names, flagged UTF-8 by `zip -UN=UTF8`.
+  // lands on the client's filesystem. The archive's *contents* keep the names
+  // she exported, with a duplicate numbered rather than lost -- see
+  // server/archive.js, which also explains why their UTF-8 flag is a known
+  // Info-ZIP shortcoming rather than something fixed here.
   const stem = `${gallery.sessionName} ${gallery.sessionDate ?? ''}`
     .normalize('NFKD')
     .replace(/[̀-ͯłŁ]/g, (c) => (c === 'ł' ? 'l' : c === 'Ł' ? 'L' : ''))

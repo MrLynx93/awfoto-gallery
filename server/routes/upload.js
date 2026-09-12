@@ -13,7 +13,7 @@
  * the worker catches up afterwards.
  */
 import path from 'node:path';
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
 
 import express from 'express';
@@ -22,7 +22,8 @@ import { FileStore } from '@tus/file-store';
 
 import { STORAGE_ROOT, baseUrl } from '../config.js';
 import { wakeWorker } from '../wake.js';
-import { originalsDir, galleryDir } from '../storage.js';
+import { originalsDir, originalPath, photoRecordPath, galleryDir } from '../storage.js';
+import { newPhotoId } from '../photos.js';
 import { findBySlug, touchUpload } from '../galleries.js';
 import { ADMIN_COOKIE, cookieFromHeader, isAdmin } from '../sessions.js';
 
@@ -88,13 +89,25 @@ const tus = new Server({
   },
 
   /**
-   * Moves the finished upload into its gallery under the name she exported it
-   * as, then wakes the worker.
+   * Gives the finished upload an id, files it under that id, and wakes the
+   * worker.
    *
-   * The filename is the one caller-influenced value in this whole path, so it
-   * is reduced to a basename and re-checked against the gallery directory —
-   * `originalPath` would reject a traversal, and this never gets the chance to
-   * construct one.
+   * **The id is minted here and nowhere else**, which is what makes two files
+   * with the same name two photographs: she shot a wedding on two cards and
+   * both hold a `DSC_0001.jpg`, and the gallery is expected to show both. A
+   * name-keyed scheme would have the second overwrite the first. See
+   * server/photos.js.
+   *
+   * It also takes her filename out of the filesystem entirely. It is the one
+   * caller-supplied string in this path; stored as a value in the record
+   * beside the bytes, it has nowhere to become `../../.env` rather than
+   * somewhere to be caught.
+   *
+   * Bytes first, record second, deliberately: the record is what
+   * `listPhotos()` counts, so a process killed between the two leaves a file
+   * nothing claims — reported by the next worker run — rather than a photo
+   * promising bytes that are not there. tus only tells the browser the upload
+   * succeeded once both have landed, so she sees a failed file and retries.
    */
   async onUploadFinish(req, upload) {
     const slug = upload.metadata?.slug;
@@ -110,10 +123,18 @@ const tus = new Server({
     }
 
     const filename = path.basename(rawName).replace(/[/\\]/g, '_');
-    const destination = path.join(originalsDir(slug), filename);
+    // Kept from her filename when it is one -- the uploader only accepts JPEG
+    // and PNG, and the bytes should not claim to be something they are not.
+    const suffix = path.extname(filename).toLowerCase();
+    const extension = /^\.[a-z0-9]{1,8}$/.test(suffix) ? suffix : '.jpg';
+    const id = newPhotoId();
 
     await mkdir(originalsDir(slug), { recursive: true });
-    await rename(path.join(incomingDir, upload.id), destination);
+    await rename(path.join(incomingDir, upload.id), originalPath(slug, id, extension));
+    await writeFile(
+      photoRecordPath(slug, id),
+      JSON.stringify({ id, filename, ext: extension, uploadedAt: new Date().toISOString() }) + '\n',
+    );
     await rm(path.join(incomingDir, `${upload.id}.json`), { force: true });
 
     // Recorded before the worker is woken: it uses this to decide whether the

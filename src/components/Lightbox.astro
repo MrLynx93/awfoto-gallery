@@ -13,7 +13,7 @@
     </svg>
   </button>
 
-  {/* A real link to /g/:slug/photo/:index, not a click handler on a button --
+  {/* A real link to /g/:slug/photo/:photo, not a click handler on a button --
       that route already answers with Content-Disposition: attachment (the
       filename she exported from Lightroom, not the index), so the browser's
       own download UI is what handles it, same as the "pobierz wszystkie" ZIP
@@ -176,9 +176,12 @@
       image.alt = thumb.alt;
       caption.textContent =
         thumbs.length > 1 ? `${current + 1} / ${thumbs.length}` : '';
-      // `current` is a position in the grid, and the grid is built in manifest
-      // order with no gaps -- the same thing the URL calls :index.
-      if (slug) download.href = `/g/${slug}/photo/${current}`;
+      // `current` is a position in the grid; the download URL names the photo
+      // itself, which the tile carries as its id. Stepping through positions
+      // and downloading by id is the distinction that keeps this right while
+      // photos are being added and removed around it.
+      const id = thumb.closest('[data-photo-id]')?.getAttribute('data-photo-id');
+      if (slug && id) download.href = `/g/${slug}/photo/${id}`;
     };
 
     grid.addEventListener('click', (event) => {

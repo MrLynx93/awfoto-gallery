@@ -9,7 +9,8 @@
     "serve": "node app.js",
     "astro": "astro",
     "check:passenger": "node scripts/check-passenger-compat.mjs",
-    "check:previews": "node scripts/check-preview-order.mjs"
+    "check:photos": "node scripts/check-photo-identity.mjs",
+    "reset": "node scripts/reset.mjs"
   },
   "dependencies": {
     "@astrojs/node": "11.1.4",

@@ -62,7 +62,7 @@ if (!row) {
  * The three form posts this page answers. Both are forms rather than fetches so
  * they work if the island never hydrates, and both end in a redirect so a
  * refresh does not repeat them -- minting a third password after she copied the
- * second, or deleting the photo that moved into the deleted one's place.
+ * second, or deleting a photo she has already deleted.
  */
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -76,18 +76,19 @@ if (Astro.request.method === 'POST') {
   }
 
   if (intent === 'delete-photo') {
-    const removed = await removePhoto(slug, Number(form.get('index')));
+    const removed = await removePhoto(slug, String(form.get('id') ?? ''));
 
     if (removed) {
       // The archive still holds the deleted photo, so the gallery goes back to
-      // preparing and the worker rebuilds it. Every preview is already in place
-      // by then -- see server/photos.js -- so that run is a ZIP and nothing more.
+      // preparing and the worker rebuilds it. Every other photo's previews are
+      // untouched -- they are named for the photograph, not for where it sat --
+      // so that run is a ZIP and nothing more.
       await markPhotosChanged(slug, removed.remaining);
       wakeWorker('photos');
     }
 
-    // Same URL either way: a position that no longer holds a photo means a
-    // double submit or a stale page, and the grid she lands on is the answer.
+    // Same URL either way: an id this gallery no longer has means a double
+    // submit or a stale page, and the grid she lands on is the answer.
     return Astro.redirect(`${galleryAdminPath(slug)}${removed ? '?zdjecie=usuniete' : ''}`, 303);
   }
 
