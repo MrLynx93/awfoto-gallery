@@ -38,6 +38,7 @@ import {
   manifestPath,
   originalPath,
   photoRecordPath,
+  photoSkippedPath,
   previewPath,
   readManifest,
   readPhotoRecord,
@@ -50,10 +51,41 @@ import {
  */
 export const newPhotoId = () => randomBytes(9).toString('base64url');
 
+/**
+ * Takes a photo the worker cannot convert out of the count, without deleting it.
+ *
+ * **This is what stops one unreadable file from holding a gallery open
+ * forever.** The panel decides it is still working by comparing the row's
+ * `photo_count` against the photos on disk, and a file that fails to convert
+ * is counted on disk and missing from the row -- so the two never meet, the
+ * progress banner never goes away, and every run tries the same doomed
+ * conversion again. Renaming its record settles both: the photo stops being
+ * work, stops being counted, and its bytes stay exactly where they are.
+ *
+ * One failure is enough to set it aside. ImageMagick that cannot read a file
+ * now will not read it in five minutes either, and the way back is the one she
+ * already knows -- drop the file in again, which makes a new photo with a new
+ * id. The worker's log names the file and says why.
+ */
+export async function setPhotoAside(slug, record, reason) {
+  await writeFile(
+    photoSkippedPath(slug, record.id),
+    JSON.stringify({
+      ...record,
+      skippedAt: new Date().toISOString(),
+      error: String(reason).slice(0, 300),
+    }) + '\n',
+  );
+  // Written first, removed second: a crash in between leaves the photo in the
+  // work queue, which costs one more failed attempt rather than losing it.
+  await rm(photoRecordPath(slug, record.id), { force: true });
+}
+
 /** Everything on disk that belongs to one photo, and nothing that does not. */
 export async function removePhotoFiles(slug, record) {
   await rm(originalPath(slug, record.id, record.ext), { force: true });
   await rm(photoRecordPath(slug, record.id), { force: true });
+  await rm(photoSkippedPath(slug, record.id), { force: true });
   for (const size of ['thumb', 'large']) {
     await rm(previewPath(slug, record.id, size), { force: true });
   }

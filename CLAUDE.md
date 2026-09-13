@@ -466,8 +466,40 @@ neither failed anything, they just hung:
   timestamp before it finishes: changed means someone asked while it worked, so
   it makes another pass. Compared rather than raced against the clock, so one
   extra pass per request and no way to spin.
+- **A photo the worker cannot convert.** The panel compares the row's
+  `photo_count` against the photos on disk, and a file that fails to resize is
+  counted on disk and missing from the row — so the two could never meet. One
+  unreadable JPEG held the whole gallery open, and every run retried the same
+  doomed conversion. `setPhotoAside()` renames its record from `<id>.json` to
+  `<id>.skipped`, which takes it out of `listPhotos()` and out of `progress()`
+  in one move, with no per-photo read on a page that polls every two seconds.
+  The bytes stay; the log names the file; dropping it in again makes a new
+  photo with a new id.
+- **A clock the app does not share with the database.** `last_upload_at` is
+  written by MySQL's `NOW()` and read back by `dateStrings` as a bare
+  `"2026-09-13 14:45:00"` — no zone. `new Date()` reads that in the *Node*
+  process's zone, so a database keeping local time and an app running in UTC
+  put the last upload hours in the *future*: `quiet` never becomes true, every
+  gallery looks like one still receiving files, and nothing is finalised until
+  real time catches up. The subtraction now happens in SQL
+  (`TIMESTAMPDIFF(SECOND, last_upload_at, NOW()) AS secondsSinceUpload`), where
+  both values come off one clock, and `sinceLastUpload()` refuses to
+  recompute it.
 
-That check runs the real worker with only `db.js` and `galleries.js` swapped
+**The poll itself could also lie.** `json()` in `_admin-api.ts` sends
+`Cache-Control: no-store` on every admin API response, because the progress
+poll asks one unchanging URL every two seconds: a cached "still working" is a
+banner that never goes away no matter what the worker finished, and it looks
+exactly like a stuck worker from a page that is simply re-reading an old
+answer.
+
+**And the worker is no longer invisible.** `wakeWorker()` used to spawn it with
+`stdio: 'ignore'`, so a gallery stuck in "przygotowuję" left nothing at all to
+look at. Its output now appends to `STORAGE_ROOT/worker.log`, every line
+stamped with the time, truncated when it passes 2 MB — a breadcrumb trail for
+the last few runs, not an archive.
+
+The check runs the real worker with only `db.js` and `galleries.js` swapped
 for a JSON file, because the bugs were in worker.js itself and a rewritten
 imitation of it would have proved nothing.
 

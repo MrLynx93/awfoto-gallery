@@ -36,6 +36,16 @@ export async function findBySlug(slug) {
             password_hash AS passwordHash, password_enc AS passwordEnc,
             status, photo_count AS photoCount,
             bytes_total AS bytesTotal, last_upload_at AS lastUploadAt,
+            -- Measured by MySQL against its own NOW(), because the worker must
+            -- not do this subtraction itself: dateStrings hands it
+            -- last_upload_at as "2026-09-13 14:45:00" with no zone at all, and
+            -- Date parsing reads that in the Node process's zone. Where the two
+            -- disagree -- a database keeping local time, an app process running
+            -- in UTC -- the timestamp lands hours in the future, the worker
+            -- decides files are still arriving, and every gallery sits in
+            -- przygotowuje until real time catches up. Two values off one clock
+            -- cannot get that wrong.
+            TIMESTAMPDIFF(SECOND, last_upload_at, NOW()) AS secondsSinceUpload,
             expires_at AS expiresAt, created_at AS createdAt
        FROM galleries
       WHERE slug = :slug AND deleted_at IS NULL`,
@@ -130,7 +140,8 @@ export async function touchUpload(slug) {
  */
 export async function needingWork() {
   const [rows] = await db().query(
-    `SELECT slug, status, photo_count AS photoCount, last_upload_at AS lastUploadAt
+    `SELECT slug, status, photo_count AS photoCount, last_upload_at AS lastUploadAt,
+            TIMESTAMPDIFF(SECOND, last_upload_at, NOW()) AS secondsSinceUpload
        FROM galleries
       WHERE deleted_at IS NULL AND status <> 'failed'
       ORDER BY created_at ASC`,

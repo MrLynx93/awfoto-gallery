@@ -98,6 +98,20 @@ export function photoRecordPath(id, photoId) {
   return path.join(originalsDir(id), `${safePhotoId(photoId)}.json`);
 }
 
+/**
+ * Where a photo's record goes when the worker cannot make previews from it.
+ *
+ * The same content under a name that ends in something other than `.json`,
+ * which is the whole trick: `listPhotos()` and `progress()` both find photos by
+ * that suffix, so one rename takes the photo out of the work *and* out of the
+ * count, with no per-photo read on a page that polls every two seconds. Its
+ * bytes stay where they are -- nothing here deletes a photograph because
+ * ImageMagick could not read it.
+ */
+export function photoSkippedPath(id, photoId) {
+  return path.join(originalsDir(id), `${safePhotoId(photoId)}.skipped`);
+}
+
 export async function readPhotoRecord(id, photoId) {
   return JSON.parse(await readFile(photoRecordPath(id, photoId), 'utf8'));
 }

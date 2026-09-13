@@ -84,7 +84,13 @@ const { runOnce, WAKE_PATH } = await load('worker.js');
 
 const readRow = async () => JSON.parse(await readFile(process.env.ROW_PATH, 'utf8'));
 
-/** The row as the panel would have it, with the last upload safely in the past. */
+/**
+ * The row as the panel would have it, with the last upload safely in the past.
+ *
+ * `secondsSinceUpload` is what the real query computes in SQL; `lastUploadAt`
+ * rides along exactly as it does in production, and the worker is expected to
+ * ignore it.
+ */
 const setRow = (patch) =>
   writeFile(
     process.env.ROW_PATH,
@@ -96,6 +102,7 @@ const setRow = (patch) =>
         photoCount: 0,
         bytesTotal: 0,
         lastUploadAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+        secondsSinceUpload: 600,
         ...patch,
       },
       null,
@@ -180,6 +187,63 @@ check('a gallery with nothing in it yet is not declared ready', async () => {
   // She has created the gallery and is about to drop a folder into it. Nothing
   // has been written for it, and nothing should be decided about it either.
   assert.equal((await readRow()).status, 'preparing');
+});
+
+check('a photo that cannot be converted does not hold the gallery open', async () => {
+  const photos = await gallery(2);
+
+  // A third upload whose bytes are not an image, and with no previews: the
+  // worker has to convert it and cannot. (ImageMagick missing fails here the
+  // same way, so this check does not depend on the host having it.)
+  const doomed = newPhotoId();
+  await writeFile(S.originalPath(SLUG, doomed, '.jpg'), 'not an image at all');
+  await writeFile(
+    S.photoRecordPath(SLUG, doomed),
+    JSON.stringify({ id: doomed, filename: 'zepsute.jpg', ext: '.jpg', uploadedAt: new Date().toISOString() }),
+  );
+  await setRow({ status: 'preparing', photoCount: 2, bytesTotal: 1000 });
+
+  await runOnce({ log: () => {} });
+
+  // The two good photos are ready, and the count the panel compares against
+  // disk agrees with the row -- which is what lets the banner go away.
+  const row = await readRow();
+  assert.equal(row.status, 'ready');
+  assert.equal(row.photoCount, 2);
+  assert.deepEqual(await S.progress(SLUG), { done: 2, total: 2 });
+
+  // Set aside, not deleted: the bytes and what was known about them stay.
+  assert.equal(fs.existsSync(S.originalPath(SLUG, doomed, '.jpg')), true);
+  assert.equal(fs.existsSync(S.photoSkippedPath(SLUG, doomed)), true);
+  assert.equal(fs.existsSync(S.photoRecordPath(SLUG, doomed)), false);
+  assert.equal(photos.length, 2);
+
+  // And it is not tried again on the next run.
+  const said = [];
+  await runOnce({ log: (message) => said.push(message) });
+  assert.deepEqual(said, []);
+});
+
+check('a clock the app does not share cannot stall a gallery', async () => {
+  await gallery(2);
+  // What a database keeping local time hands an app process running in UTC:
+  // a last upload stamped two hours from now. Read with `new Date()` that is
+  // "files are still arriving", and the worker used to answer 'waiting' to it
+  // on every run -- for the whole two hours, with the banner up throughout.
+  // The number beside it is the one the database actually measured.
+  await setRow({
+    status: 'preparing',
+    photoCount: 2,
+    bytesTotal: 1000,
+    lastUploadAt: new Date(Date.now() + 2 * 60 * 60_000).toISOString().slice(0, 19).replace('T', ' '),
+    secondsSinceUpload: 600,
+  });
+
+  await runOnce({ log: () => {} });
+
+  const row = await readRow();
+  assert.equal(row.status, 'ready', 'the future-looking timestamp was believed');
+  assert.equal(row.photoCount, 2);
 });
 
 check('a delete during a run is picked up by that same run', async () => {

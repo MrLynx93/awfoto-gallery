@@ -24,6 +24,7 @@ import { findBySlug, markReady, needingWork } from './galleries.js';
 import { makeDerivatives, dimensions } from './images.js';
 import { buildArchive, verifyArchive } from './archive.js';
 import { canFit } from './disk.js';
+import { setPhotoAside } from './photos.js';
 import {
   listPhotos,
   originalPath,
@@ -103,6 +104,26 @@ const POLL_MS = 10_000;
  */
 const writeManifest = (slug, photos) =>
   writeFile(manifestPath(slug), JSON.stringify({ slug, photos }, null, 2) + '\n');
+
+/**
+ * Seconds since the last file landed, measured by the database against its own
+ * clock (`secondsSinceUpload`, see server/galleries.js).
+ *
+ * Never recomputed here from `lastUploadAt`. That column arrives as a bare
+ * string with no zone, and reading it with `new Date()` puts it in whatever
+ * zone the *Node* process happens to run in -- which, against a database
+ * keeping local time, can place the last upload hours in the future. Every
+ * gallery then looks like one that is still receiving files: nothing is ever
+ * finalised, the row stays `preparing`, and the panel's progress banner stays
+ * up for as long as the offset lasts. A row that has never seen an upload
+ * reports nothing at all, and that is as settled as a gallery gets.
+ */
+function sinceLastUpload(gallery) {
+  const seconds = Number(gallery?.secondsSinceUpload);
+  return gallery?.secondsSinceUpload == null || !Number.isFinite(seconds)
+    ? Number.POSITIVE_INFINITY
+    : seconds;
+}
 
 /** A manifest entry the grid can lay out without guessing. */
 const measured = (photo) => Number(photo?.width) > 0 && Number(photo?.height) > 0;
@@ -188,8 +209,7 @@ async function processGallery(slug, { log = console.log } = {}) {
   // Still arriving? Generate derivatives for what is here, but do not finalise:
   // building the archive now would only mean rebuilding it for the next photo,
   // and marking the gallery ready would hide the ones still to come.
-  const lastUpload = gallery.lastUploadAt ? new Date(gallery.lastUploadAt).getTime() : 0;
-  const quiet = Date.now() - lastUpload > QUIET_PERIOD_MS;
+  const quiet = sinceLastUpload(gallery) > QUIET_PERIOD_MS / 1000;
 
   // Nothing new since the last run, and already finished.
   if (quiet && gallery.status !== 'preparing' && gallery.photoCount === uploaded.length) {
@@ -250,8 +270,14 @@ async function processGallery(slug, { log = console.log } = {}) {
         bytes,
       });
     } catch (error) {
-      // One unreadable file should not cost the client the other 799.
-      log(`[worker] ${slug}: skipping ${record.filename ?? record.id} — ${error.message.split('\n')[0]}`);
+      // One unreadable file should not cost the client the other 799 -- and it
+      // must not hold the gallery open either, which is what leaving it in the
+      // count did: the row's photo_count could never catch up with a disk that
+      // included a photo no run would ever produce, so the panel waited on it
+      // forever. Set aside, named in the log, bytes untouched.
+      const why = error.message.split('\n')[0];
+      await setPhotoAside(slug, record, why).catch(() => {});
+      log(`[worker] ${slug}: set aside ${record.filename ?? record.id} — ${why}`);
     }
   }
 
@@ -380,9 +406,18 @@ export async function runOnce({ log = console.log } = {}) {
 
 // Only when run directly, so importing this module for a test does no work.
 if (process.argv[1] && process.argv[1].endsWith('worker.js')) {
+  // Stamped, because the question asked of this log is always "how long did
+  // that take, and when did it give up" -- and because wake.js now keeps the
+  // output instead of discarding it, which is the only way anyone sees a run
+  // that went wrong.
+  const stamp = (message) => console.log(`${new Date().toISOString()} ${message}`);
   try {
-    const count = await runOnce();
-    console.log(`[worker] done (${count} galleries)`);
+    stamp('[worker] run started');
+    const count = await runOnce({ log: stamp });
+    stamp(`[worker] done (${count} galleries)`);
+  } catch (error) {
+    stamp(`[worker] run failed — ${error?.stack ?? error}`);
+    process.exitCode = 1;
   } finally {
     await close();
   }

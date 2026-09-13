@@ -12,10 +12,25 @@
 import type { APIContext } from 'astro';
 import { ADMIN_COOKIE, isAdmin } from '../../../../server/sessions.js';
 
+/**
+ * `no-store` on every one of these, and the progress poll is why.
+ *
+ * It asks the same URL every two seconds and decides from the answer whether
+ * the gallery is still being prepared. A response without cache directives is
+ * one a browser or a proxy may serve again from its own copy, and a cached
+ * "still working" is a progress banner that never goes away no matter what the
+ * worker has finished -- the failure looks exactly like a stuck worker, from a
+ * page that is simply reading yesterday's answer. None of these responses is
+ * ever worth storing: they are all a live look at one gallery.
+ */
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      ...headers,
+    },
   });
 }
 
