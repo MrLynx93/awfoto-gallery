@@ -12,6 +12,7 @@
     "check:photos": "node scripts/check-photo-identity.mjs",
     "check:worker": "node scripts/check-worker-finishes.mjs",
     "check:queries": "node scripts/check-queries.mjs",
+    "check:spawn": "node scripts/check-worker-spawn.mjs",
     "reset": "node scripts/reset.mjs"
   },
   "dependencies": {

@@ -19,13 +19,20 @@
  * comment ends it, and this file would not parse.)
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, utimesSync, closeSync, openSync, statSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  utimesSync,
+  closeSync,
+  openSync,
+  statSync,
+  rmSync,
+  existsSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { STORAGE_ROOT } from './config.js';
 
-const workerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'worker.js');
 const wakePath = path.join(STORAGE_ROOT, 'worker.wake');
 const logPath = path.join(STORAGE_ROOT, 'worker.log');
 
@@ -65,11 +72,46 @@ function markWake() {
   }
 }
 
+/**
+ * Where `worker.js` actually is — which is **not** simply next to this file,
+ * and that is the whole point.
+ *
+ * Astro bundles `server/wake.js` into `dist/server/chunks/<hash>.mjs`, so in a
+ * page — the one that deletes a photo, for instance — `import.meta.url` points
+ * inside the bundle and the worker resolves to a path where nothing lives. The
+ * spawn then failed, silently, on every delete; uploads kept working because
+ * `app.js` imports this file from disk, where the neighbour really is there.
+ * From the panel it looked like a worker that would not run, which is exactly
+ * what it was: a gallery left saying "przygotowuję" with nothing coming.
+ *
+ * So the path is *found* rather than assumed. `process.cwd()` is the app root
+ * under Passenger, for the cron, and in dev alike, which is what makes the
+ * second candidate the one that saves the bundled case.
+ */
+export function resolveWorkerPath() {
+  const candidates = [
+    process.env.WORKER_PATH,
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'worker.js'),
+    path.join(process.cwd(), 'server', 'worker.js'),
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
 export function wakeWorker(reason = 'worker') {
   try {
     markWake();
   } catch (error) {
     console.error(`[${reason}] could not record the wake:`, error.message);
+  }
+
+  const workerPath = resolveWorkerPath();
+  if (!workerPath) {
+    console.error(
+      `[${reason}] cannot find worker.js — looked next to wake.js and under ` +
+        `${process.cwd()}. Set WORKER_PATH if it lives somewhere else.`,
+    );
+    return;
   }
 
   const out = openLog();
@@ -78,6 +120,12 @@ export function wakeWorker(reason = 'worker') {
       detached: true,
       stdio: ['ignore', out, out],
       env: process.env,
+    });
+    // Without this a spawn that fails raises an unhandled 'error' event rather
+    // than saying anything -- which is how a worker that never started looked
+    // like a worker that never finished.
+    child.on('error', (error) => {
+      console.error(`[${reason}] worker did not start:`, error.message);
     });
     child.unref();
   } catch (error) {

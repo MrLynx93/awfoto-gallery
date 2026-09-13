@@ -493,11 +493,28 @@ banner that never goes away no matter what the worker finished, and it looks
 exactly like a stuck worker from a page that is simply re-reading an old
 answer.
 
+**The worst one was that the page could not start the worker at all.** Astro
+bundles `server/wake.js` into `dist/server/chunks/<hash>.mjs`, so inside a page
+`import.meta.url` points into the bundle — and `path.join(dirname, 'worker.js')`
+named `dist/server/chunks/worker.js`, where nothing lives. Every delete spawned
+a file that was not there. Uploads never noticed, because `app.js` imports the
+same module straight off disk, where `worker.js` really is the neighbour; the
+two paths differ only in how the file got there. `resolveWorkerPath()` now
+*finds* the worker — `WORKER_PATH`, then next to `wake.js`, then
+`process.cwd()/server/worker.js`, which is the app root under Passenger, for
+the cron, and in dev alike — and a failed spawn says so instead of raising an
+unhandled `error` event nobody hears.
+`scripts/check-worker-spawn.mjs` (`npm run check:spawn`) reproduces the bundle:
+a copy of `server/` with `worker.js` removed from it, imported from there, and
+it insists on both halves — the path resolves *and* a real worker starts and
+writes its first line.
+
 **And the worker is no longer invisible.** `wakeWorker()` used to spawn it with
 `stdio: 'ignore'`, so a gallery stuck in "przygotowuję" left nothing at all to
-look at. Its output now appends to `STORAGE_ROOT/worker.log`, every line
-stamped with the time, truncated when it passes 2 MB — a breadcrumb trail for
-the last few runs, not an archive.
+look at — which is how a spawn that never happened went two rounds of
+debugging without being seen. Its output now appends to
+`STORAGE_ROOT/worker.log`, every line stamped with the time, truncated when it
+passes 2 MB — a breadcrumb trail for the last few runs, not an archive.
 
 The check runs the real worker with only `db.js` and `galleries.js` swapped
 for a JSON file, because the bugs were in worker.js itself and a rewritten
