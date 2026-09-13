@@ -567,9 +567,12 @@ where dropping a folder is one of the two ways a gallery gets created.
 Uploading has no on-page confirmation beyond "Wysłano N zdjęć" — the same
 message on either screen, just **portalled** out of the card on the one where
 the uploader is a card. It no longer ends in "Odśwież stronę, żeby je
-zobaczyć": the preparing banner right below says the page updates itself, and
-it does, so two instructions that disagreed became one that is merely
-redundant. A card is sized like the
+zobaczyć": the preparing banner right below promises "Ta strona odświeży się
+sama, gdy wszystko będzie gotowe", and it does, so an instruction that
+contradicted it became one sentence that is simply true. **Nothing in that
+banner mentions JavaScript or hedges the promise**, either — she has no way to
+act on the word, and the uploader is a React island, so a browser without it
+could not have put a photo here to begin with. A card is sized like the
 photographs beside it, with no room for that sentence at wedding scale or for a
 list of failed files, so `PhotoUploader.tsx` renders that text into a plain
 `#uploader-feedback` div the admin page places right after the grid, via

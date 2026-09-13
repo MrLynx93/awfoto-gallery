@@ -21,9 +21,15 @@
  * Both states are always in the markup, toggled with `hidden` rather than one
  * being conditionally rendered: the script flips between them the moment an
  * upload finishes, and it can only do that with real elements, not by asking
- * Astro to build one. Without JavaScript neither moves, and what the server
- * rendered is simply correct for whenever the page happened to load — which is
- * what the sentence about refreshing by hand is there for.
+ * Astro to build one.
+ *
+ * **The sentence promises a refresh, so nothing here may hedge about one.**
+ * "Ta strona odświeży się sama" is what she reads, and it has to be simply
+ * true — no aside about JavaScript, which is not a thing she has any way to
+ * act on, and not an instruction to refresh by hand, which would contradict
+ * the promise in the same breath. Assuming JavaScript costs nothing here
+ * anyway: the uploader is a React island, so a browser without it cannot put
+ * a photo in this gallery in the first place.
  */
 import { galleryProgressPath } from '../../server/paths.js';
 
@@ -63,7 +69,7 @@ const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
   </svg>
   <span class="preparing-body">
     <span class="preparing-text" id="preparing-text">
-      {text}{' '}Ta strona zaktualizuje się sama, gdy będzie gotowa.
+      {text}{' '}Ta strona odświeży się sama, gdy wszystko będzie gotowe.
     </span>
     {/* A div-based bar rather than <progress>: the width, the stripe that
         slides across it and the count beside it all need to animate smoothly
@@ -108,8 +114,9 @@ const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
     time the worker is quietly catching up on the new files, so nothing
     server-rendered would show either.
 
-    Progressive enhancement only: without JavaScript this never runs, and the
-    sentence above already told her to reload by hand instead. */}
+    This is what makes the sentence above true, so it is not optional
+    decoration: the banner says the page refreshes itself, and this is the
+    thing that does it. */}
 <script
   is:inline
   data-progress-url={slug ? galleryProgressPath(slug) : ''}
