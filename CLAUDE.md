@@ -173,6 +173,31 @@ notice a distinction that changes nothing she can do, so adding photos and
 removing one now read alike: "Zdjęcia zostały zmienione, więc paczka do
 pobrania przygotowuje się od nowa."
 
+**What does change it is what is actually happening.** The bar measures the
+resizing, and the resizing finishes first — after it fills there is still the
+quiet window and then the archive, which is why a full bar used to sit over a
+sentence about preparing photos for another minute. Once every photo is
+through, the banner says so instead: "Wszystkie zdjęcia są gotowe — składam z
+nich paczkę do pobrania." Which of the two shows is decided from the same
+`done`/`total` the bar draws, server-side for the first paint and in the poll
+after that, so nothing new had to be invented to know it.
+
+**The wait itself is shorter, and that took a second signal to make safe.**
+`QUIET_PERIOD_MS` is 15s rather than 45, and `POLL_MS` — how soon a waiting run
+looks again — is 3s rather than 10, which together take about 40 seconds off
+every upload. The reason 45 was there: `last_upload_at` only moves when a file
+*finishes*, and a session here is ~20 photos of ~15 MB, one of which can take
+longer than 15s to arrive on a domestic line. On that signal alone a short
+window would finalise the gallery *between* photos and rebuild the whole 300 MB
+archive for each one that followed. So `sinceIncomingActivity()` watches the
+other half: a tus upload in flight is being written into `incoming/` the whole
+time it is arriving, and its mtime says so when the row cannot. A gallery is
+quiet only when both agree — nothing completed *and* nothing being written —
+and both of those subtractions are taken off one clock.
+
+All three are overridable on the host without a deploy: `WORKER_QUIET_MS`,
+`WORKER_POLL_MS`, `WORKER_MAX_WAIT_MS`.
+
 **The banner is a component because it belongs on two screens**, and the
 second one is the awkward one. `/admin/galeria` is rendered before the gallery
 exists — she drops a folder, the editor creates the row over fetch and rewrites
@@ -189,8 +214,8 @@ already says so.
 **The bar's numbers are not what decides when to reload, and that distinction
 is load-bearing.** `done` (previews on disk) reaches `total` (originals on
 disk) as soon as every photo's derivatives are finished — but the worker does
-not finalise there. It waits out a 45s quiet window first (`QUIET_PERIOD_MS`,
-in case more files are still arriving), then rebuilds the archive, and only
+not finalise there. It waits out a quiet window first (`QUIET_PERIOD_MS`, in
+case more files are still arriving), then rebuilds the archive, and only
 *then* does `markReady()` update `photo_count`. Reloading as soon as
 `done >= total` was the first version of this and it was wrong: confirmed by
 watching it happen, a reload at that point lands on a photo count and an

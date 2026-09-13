@@ -32,6 +32,17 @@ import { STORAGE_ROOT } from './config.js';
 export const galleriesRoot = path.join(STORAGE_ROOT, 'galleries');
 
 /**
+ * Where a tus upload is written while it is still arriving, before the hook
+ * moves it into its gallery.
+ *
+ * Named here rather than in the upload route because the worker watches it
+ * too: a file in here that was touched a moment ago means bytes are still
+ * coming, which is the difference between "she has finished" and "she is
+ * halfway through a 15 MB photo".
+ */
+export const incomingDir = path.join(STORAGE_ROOT, 'incoming');
+
+/**
  * Gallery ids are ours, never a caller's, but this is the join that would turn
  * a bad one into an arbitrary file read. Rejecting anything but the character
  * set we generate costs nothing and closes the question.

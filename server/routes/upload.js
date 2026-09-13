@@ -20,17 +20,20 @@ import express from 'express';
 import { Server } from '@tus/server';
 import { FileStore } from '@tus/file-store';
 
-import { STORAGE_ROOT, baseUrl } from '../config.js';
+import { baseUrl } from '../config.js';
 import { wakeWorker } from '../wake.js';
-import { originalsDir, originalPath, photoRecordPath, galleryDir } from '../storage.js';
+import {
+  originalsDir,
+  originalPath,
+  photoRecordPath,
+  galleryDir,
+  incomingDir,
+} from '../storage.js';
 import { newPhotoId } from '../photos.js';
 import { findBySlug, touchUpload } from '../galleries.js';
 import { ADMIN_COOKIE, cookieFromHeader, isAdmin } from '../sessions.js';
 
 export const uploadRouter = express.Router();
-
-/** Partial uploads live apart from finished originals, and are swept with them. */
-const incomingDir = path.join(STORAGE_ROOT, 'incoming');
 
 // Created synchronously, before FileStore is constructed below. The store binds
 // to this directory at construction, so creating it later -- in a request hook,

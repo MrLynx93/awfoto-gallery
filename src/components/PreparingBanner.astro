@@ -30,6 +30,15 @@
  * asked her to notice a distinction that changes nothing she can do. Adding
  * photos and removing one now say the same thing.
  *
+ * **What does change the sentence is what is actually happening.** The bar
+ * measures the resizing, and the resizing finishes first: after it fills there
+ * is still a pause for anything else she might be dropping in, and then the
+ * archive to build. That was the whole complaint — a full bar, and then a
+ * minute of a screen that looked stuck — so once every photo is through, the
+ * banner stops talking about preparing photos and says it is packing them.
+ * Which of the two shows is decided from the same `done`/`total` the bar draws,
+ * on the server for the first paint and in the poll after that.
+ *
  * **The sentence promises a refresh, so nothing here may hedge about one.**
  * "Ta strona odświeży się sama" is what she reads, and it has to be simply
  * true — no aside about JavaScript, which is not a thing she has any way to
@@ -57,6 +66,16 @@ const { slug = null, working = false, done = 0, total = 0, note = null } = Astro
 
 const hasProgress = total > 0;
 const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
+
+/** Still turning photographs into previews; the bar is climbing. */
+const LEAD_RESIZING = 'Zdjęcia zostały zmienione, więc paczka do pobrania przygotowuje się od nowa.';
+/** Every photo is through; what is left is the archive, and the short wait before it. */
+const LEAD_PACKING = 'Wszystkie zdjęcia są gotowe — składam z nich paczkę do pobrania.';
+const TAIL =
+  ' Klient na razie widzi informację, że galeria się szykuje.' +
+  ' Ta strona odświeży się sama, gdy wszystko będzie gotowe.';
+
+const packing = hasProgress && done >= total;
 ---
 
 <p class="preparing" role="status" id="preparing-banner" hidden={!working}>
@@ -67,9 +86,7 @@ const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
   </svg>
   <span class="preparing-body">
     <span class="preparing-text" id="preparing-text">
-      Zdjęcia zostały zmienione, więc paczka do pobrania przygotowuje się od nowa. Klient na
-      razie widzi informację, że galeria się szykuje. Ta strona odświeży się sama, gdy wszystko
-      będzie gotowe.
+      {(packing ? LEAD_PACKING : LEAD_RESIZING) + TAIL}
     </span>
     {/* A div-based bar rather than <progress>: the width, the stripe that
         slides across it and the count beside it all need to animate smoothly
@@ -124,11 +141,14 @@ const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
   data-initially-working={working ? '1' : ''}
   data-initial-done={done}
   data-initial-total={total}
+  data-text-resizing={LEAD_RESIZING + TAIL}
+  data-text-packing={LEAD_PACKING + TAIL}
 >
   (function (scriptEl) {
       if (!scriptEl) return;
       const banner = document.getElementById('preparing-banner');
       const stateEl = document.getElementById('gallery-state');
+      const textEl = document.getElementById('preparing-text');
       const meterEl = document.getElementById('preparing-meter');
       const trackEl = document.getElementById('preparing-track');
       const fillEl = document.getElementById('preparing-fill');
@@ -166,6 +186,16 @@ const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
       }
 
       function applyProgress(done, total) {
+        // The bar is only the resizing. Once that is through, the wait is the
+        // archive being built -- so say that rather than showing a full bar
+        // over a sentence about photos that are already done.
+        if (textEl) {
+          textEl.textContent =
+            total > 0 && done >= total
+              ? scriptEl.dataset.textPacking
+              : scriptEl.dataset.textResizing;
+        }
+
         if (total <= 0) {
           meterEl.hidden = true;
           shownDone = done;

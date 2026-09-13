@@ -26,6 +26,7 @@ import { buildArchive, verifyArchive } from './archive.js';
 import { canFit } from './disk.js';
 import { setPhotoAside } from './photos.js';
 import {
+  incomingDir,
   listPhotos,
   originalPath,
   previewsDir,
@@ -83,19 +84,35 @@ const releaseLock = () => rm(LOCK_PATH, { force: true });
 /** When the last request for a run came in, or 0 if none ever has. */
 const wakeMark = () => stat(WAKE_PATH).then((s) => s.mtimeMs).catch(() => 0);
 
+/** A tuning knob, overridable on the host without a deploy. */
+const tuning = (name, fallback) => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
 /**
- * How long after the last file lands a gallery is considered finished.
+ * How long after the last sign of an upload a gallery is considered finished.
  *
- * Uploads arrive one at a time, so "no files for a while" is the only signal
- * available that she has stopped. Long enough to bridge a slow file on a
- * domestic connection; short enough that she is not left watching
- * "przygotowuję" after the last photo.
+ * It was 45 seconds, and every one of those seconds was spent with the bar
+ * already full and nothing visibly happening. 15 is enough now because the
+ * wait no longer rests on completed files alone: `sinceIncomingActivity()`
+ * also watches the bytes still being written. A session here is ~20 photos of
+ * ~15 MB, and one of those can take longer to arrive than this window — on the
+ * old signal that would have finalised the gallery between two photos and
+ * rebuilt the whole 300 MB archive for each one that followed.
  */
-const QUIET_PERIOD_MS = 45_000;
+const QUIET_PERIOD_MS = tuning('WORKER_QUIET_MS', 15_000);
 
 /** How long a single run will keep waiting for an upload batch to settle. */
-const MAX_WAIT_MS = 20 * 60_000;
-const POLL_MS = 10_000;
+const MAX_WAIT_MS = tuning('WORKER_MAX_WAIT_MS', 20 * 60_000);
+
+/**
+ * How soon a waiting run looks again. Was 10s, which is up to 10s of dead time
+ * after the quiet window finally passes; a pass over a settled gallery is a
+ * directory listing and a few stats, so asking more often costs nothing worth
+ * measuring.
+ */
+const POLL_MS = tuning('WORKER_POLL_MS', 3_000);
 
 /**
  * The grid reads this, in the order it draws. Written at the end of every run,
@@ -104,6 +121,32 @@ const POLL_MS = 10_000;
  */
 const writeManifest = (slug, photos) =>
   writeFile(manifestPath(slug), JSON.stringify({ slug, photos }, null, 2) + '\n');
+
+/**
+ * Seconds since anything was last written into the upload staging area.
+ *
+ * The other half of "is she still uploading", and the half that lets the quiet
+ * window be short. `last_upload_at` only moves when a file *finishes*, so a
+ * 15 MB photo crawling up a domestic line looks exactly like a photographer
+ * who has walked away — until it lands, and the gallery that was declared
+ * finished has to rebuild its archive around it. A tus upload in flight is
+ * being written to `incoming/` the whole time, so its mtime is the signal that
+ * the row cannot give.
+ *
+ * Both sides of this subtraction come off the same clock, which is the local
+ * filesystem's; nothing here compares a database time to a Node one.
+ */
+async function sinceIncomingActivity() {
+  const entries = await readdir(incomingDir).catch(() => []);
+
+  let newest = 0;
+  for (const entry of entries) {
+    const info = await stat(path.join(incomingDir, entry)).catch(() => null);
+    if (info) newest = Math.max(newest, info.mtimeMs);
+  }
+
+  return newest === 0 ? Number.POSITIVE_INFINITY : (Date.now() - newest) / 1000;
+}
 
 /**
  * Seconds since the last file landed, measured by the database against its own
@@ -209,7 +252,9 @@ async function processGallery(slug, { log = console.log } = {}) {
   // Still arriving? Generate derivatives for what is here, but do not finalise:
   // building the archive now would only mean rebuilding it for the next photo,
   // and marking the gallery ready would hide the ones still to come.
-  const quiet = sinceLastUpload(gallery) > QUIET_PERIOD_MS / 1000;
+  const window = QUIET_PERIOD_MS / 1000;
+  const quiet =
+    sinceLastUpload(gallery) > window && (await sinceIncomingActivity()) > window;
 
   // Nothing new since the last run, and already finished.
   if (quiet && gallery.status !== 'preparing' && gallery.photoCount === uploaded.length) {

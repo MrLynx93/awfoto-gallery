@@ -75,6 +75,11 @@ await writeFile(
 process.env.STORAGE_ROOT = path.join(root, 'storage');
 process.env.ROW_PATH = path.join(root, 'row.json');
 process.env.DISK_BUDGET_GB = '12';
+// Read once, at import. A run that decides a gallery is still receiving files
+// would otherwise sit in its poll loop for twenty minutes; here it should
+// answer "not yet" and end, which is the thing being checked.
+process.env.WORKER_MAX_WAIT_MS = '1';
+process.env.WORKER_POLL_MS = '1';
 
 const load = (file) => import(pathToFileURL(path.join(server, file)).href);
 const S = await load('storage.js');
@@ -222,6 +227,34 @@ check('a photo that cannot be converted does not hold the gallery open', async (
   const said = [];
   await runOnce({ log: (message) => said.push(message) });
   assert.deepEqual(said, []);
+});
+
+check('a photo still arriving holds the gallery back', async () => {
+  await gallery(2);
+  // The row says the last *completed* upload was ten minutes ago, which is
+  // what a 15 MB photo halfway up a domestic line looks like from the database.
+  await setRow({ status: 'preparing', photoCount: 2, bytesTotal: 1000, secondsSinceUpload: 600 });
+
+  const incoming = path.join(process.env.STORAGE_ROOT, 'incoming');
+  fs.mkdirSync(incoming, { recursive: true });
+  const partial = path.join(incoming, 'a1b2c3d4e5f6');
+  fs.writeFileSync(partial, 'half a photograph');
+
+  await runOnce({ log: () => {} });
+
+  // Finalising here would build the archive without the photo that is still
+  // coming, and then build it again when it lands.
+  assert.equal((await readRow()).status, 'preparing', 'finalised mid-upload');
+
+  // Once nothing has been written for a while, it finishes.
+  const old = new Date(Date.now() - 5 * 60_000);
+  fs.utimesSync(partial, old, old);
+  await runOnce({ log: () => {} });
+
+  const row = await readRow();
+  assert.equal(row.status, 'ready');
+  assert.equal(row.photoCount, 2);
+  fs.rmSync(incoming, { recursive: true, force: true });
 });
 
 check('a clock the app does not share cannot stall a gallery', async () => {
