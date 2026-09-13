@@ -1,0 +1,100 @@
+/*
+ * The panel's dialogs: the box, the red sentence inside it, and the two
+ * buttons under that.
+ *
+ * A plain stylesheet rather than a scoped <style> block in one of them, because
+ * there are two now -- "usunąć tę galerię?" and "usunąć to zdjęcie?" -- and a
+ * confirmation that looks slightly unlike the other confirmation is exactly the
+ * kind of difference that makes someone read one of them less carefully. Each
+ * component imports this itself, so every page that renders one gets these
+ * rules without having to remember to.
+ *
+ * Names are prefixed because these are global: `.warn` alone already means
+ * something else in editor.css.
+ */
+
+/* The modal's own chrome. Only ever on the <dialog> frame -- the standalone
+   confirmation page renders the same body as a plain block, where a bordered
+   box floating inside the page's own card would be a box inside a box. */
+.panel-dialog {
+  /* Wide enough for the two buttons to sit side by side rather than stack:
+     at 32rem they missed by a couple of pixels. */
+  width: min(34rem, calc(100% - 2rem));
+  padding: clamp(1.4rem, 4vw, 2rem);
+  border: 1px solid var(--piaskowy);
+  border-radius: 4px;
+  background: var(--kremowy);
+  color: var(--tekst);
+}
+.panel-dialog::backdrop {
+  background: rgba(74, 64, 56, 0.45);
+}
+.panel-dialog h2 {
+  margin: 0 0 1.4rem;
+}
+
+/* Red rather than clay: this is the sentence that says the photographs are
+   going, and in the panel's warm palette a beige box reads as a note. */
+.dialog-warn {
+  background: #fbeae8;
+  border: 1px solid #e9bdb7;
+  border-radius: 4px;
+  padding: 1rem 1.2rem;
+  margin: 0 0 2rem;
+  color: var(--czerwien-ciemna);
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.2rem;
+}
+
+/* The destructive button is the one that looks unlike every other button in
+   the panel: filled, and in a colour used nowhere else. */
+.dialog-confirm {
+  font-family: var(--body);
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 1em 1.8em;
+  border-radius: 3px;
+  /* Transparent rather than none: the outlined button beside it has a real
+     1px border, and without this the filled one is two pixels shorter. */
+  border: 1px solid transparent;
+  background: var(--czerwien);
+  color: var(--biel);
+  cursor: pointer;
+  /* Stated on both, so a <button> and an <a> side by side come out the same
+     height: a button's default line-height is `normal` and an anchor inherits
+     the body's 1.75, and the two sat six pixels apart. */
+  line-height: 1.2;
+  transition: background 0.25s;
+}
+.dialog-confirm:hover {
+  background: var(--czerwien-ciemna);
+}
+
+/* A button too, not a passing link: it sits next to the destructive one and is
+   the choice most likely to be wanted, so it has to look like something to
+   press. Outlined rather than filled, so the two are still told apart. */
+.dialog-cancel {
+  font-family: var(--body);
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 1em 1.8em;
+  border-radius: 3px;
+  border: 1px solid var(--taupe);
+  background: transparent;
+  color: var(--tekst);
+  text-decoration: none;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.25s, border-color 0.25s;
+}
+.dialog-cancel:hover {
+  background: var(--piaskowy);
+  border-color: var(--piaskowy);
+}

@@ -21,6 +21,10 @@
  */
 import { daysUntil } from '../../server/gallery-form.js';
 import { dayCount, megabytes } from '../../server/format.js';
+// The box, the red sentence and the two buttons, shared with the dialog that
+// asks about one photo -- imported here rather than by each page, so both
+// frames below are dressed wherever they are rendered.
+import '../styles/dialog.css';
 
 interface Props {
   gallery: {
@@ -54,7 +58,11 @@ const Frame = dialogId ? 'dialog' : 'div';
 const left = daysUntil(gallery.expiresAt) ?? 0;
 ---
 
-<Frame id={dialogId} aria-labelledby={dialogId && `${dialogId}-title`}>
+<Frame
+  id={dialogId}
+  class={dialogId ? 'panel-dialog' : undefined}
+  aria-labelledby={dialogId && `${dialogId}-title`}
+>
   {dialogId && <h2 id={`${dialogId}-title`}>Usunąć tę galerię?</h2>}
 
   <dl class="what">
@@ -76,21 +84,21 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
     </div>
   </dl>
 
-  <p class="warn" role="alert">
+  <p class="dialog-warn" role="alert">
     Zniknie link klienta i wszystkie zdjęcia z serwera. Tego nie da się cofnąć —
     jeśli nie masz ich już nigdzie indziej, trzeba będzie wysłać je od nowa.
   </p>
 
-  <form method="POST" action={action} class="actions">
+  <form method="POST" action={action} class="dialog-actions">
     <input type="hidden" name="intent" value="delete-gallery" />
-    <button type="submit" class="danger">Tak, usuń galerię</button>
+    <button type="submit" class="dialog-confirm">Tak, usuń galerię</button>
     {
       cancel.href ? (
-        <a class="cancel" href={cancel.href}>
+        <a class="dialog-cancel" href={cancel.href}>
           {cancel.label}
         </a>
       ) : (
-        <button type="submit" class="cancel" formmethod="dialog" formnovalidate>
+        <button type="submit" class="dialog-cancel" formmethod="dialog" formnovalidate>
           {cancel.label}
         </button>
       )
@@ -99,21 +107,9 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
 </Frame>
 
 <style>
-  /* The modal's own chrome. Scoped here rather than repeated on each page that
-     opens one, so every dialog in the panel is the same object. */
-  dialog {
-    /* Wide enough for the two buttons to sit side by side rather than stack:
-       at 32rem they missed by a couple of pixels. */
-    width: min(34rem, calc(100% - 2rem));
-    padding: clamp(1.4rem, 4vw, 2rem);
-    border: 1px solid var(--piaskowy);
-    border-radius: 4px;
-    background: var(--kremowy);
-    color: var(--tekst);
-  }
-  dialog::backdrop { background: rgba(74, 64, 56, 0.45); }
-  dialog h2 { margin: 0 0 1.4rem; }
-
+  /* What is left here is this question's own body -- the chrome around it, and
+     the two buttons under it, are in styles/dialog.css because the photo
+     dialog wears the same ones. */
   .what {
     margin: 0 0 2rem;
     border-top: 1px solid var(--piaskowy);
@@ -127,42 +123,4 @@ const left = daysUntil(gallery.expiresAt) ?? 0;
     color: var(--tekst-jasny);
   }
   dd { margin: 0; text-align: right; }
-
-  /* Red rather than clay: this is the sentence that says the photographs are
-     going, and in the panel's warm palette a beige box reads as a note. */
-  .warn {
-    background: #fbeae8; border: 1px solid #e9bdb7; border-radius: 4px;
-    padding: 1rem 1.2rem; margin: 0 0 2rem; color: var(--czerwien-ciemna);
-  }
-
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.2rem; }
-
-  /* The destructive button is the one that looks unlike every other button in
-     the panel: filled, and in a colour used nowhere else. */
-  .danger {
-    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
-    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
-    /* Transparent rather than none: the outlined button beside it has a real
-       1px border, and without this the filled one is two pixels shorter. */
-    border: 1px solid transparent;
-    background: var(--czerwien); color: var(--biel); cursor: pointer;
-    /* Stated on both, so a <button> and an <a> side by side come out the same
-       height: a button's default line-height is `normal` and an anchor inherits
-       the body's 1.75, and the two sat six pixels apart. */
-    line-height: 1.2;
-    transition: background 0.25s;
-  }
-  .danger:hover { background: var(--czerwien-ciemna); }
-
-  /* A button too, not a passing link: it sits next to the destructive one and
-     is the choice most likely to be wanted, so it has to look like something to
-     press. Outlined rather than filled, so the two are still told apart. */
-  .cancel {
-    font-family: var(--body); font-size: 0.82rem; letter-spacing: 0.14em;
-    text-transform: uppercase; padding: 1em 1.8em; border-radius: 3px;
-    border: 1px solid var(--taupe); background: transparent;
-    color: var(--tekst); text-decoration: none; line-height: 1.2; cursor: pointer;
-    transition: background 0.25s, border-color 0.25s;
-  }
-  .cancel:hover { background: var(--piaskowy); border-color: var(--piaskowy); }
 </style>

@@ -1,0 +1,130 @@
+---
+/**
+ * "Usunąć to zdjęcie?" — the panel's own dialog, with the photograph in it.
+ *
+ * The × used to hand this question to `window.confirm()`, which is the one box
+ * on these screens that can be shown nothing: no picture, the browser's
+ * typography rather than the page's, and an OK/Anuluj pair that says nothing
+ * about what OK does. Deleting the wrong photo is the whole mistake worth
+ * preventing here, and the surest way to say *which* photo is to show it —
+ * the tile's own thumbnail is already loaded, so it paints instantly.
+ *
+ * One dialog for the whole grid, not one per tile: a wedding is 800 tiles and
+ * the only things that differ are an id, a picture and a number, all filled in
+ * when it opens. (The dashboard renders one per row instead, but nine rows is
+ * not eight hundred.)
+ *
+ * It posts exactly what the × posted before — same intent, same id, same page
+ * — so this is a frame around that form rather than a replacement for it, and
+ * with no JavaScript the × still submits directly, as it always did.
+ */
+import '../styles/dialog.css';
+
+interface Props {
+  /** How many photos the grid is drawing, for "Zdjęcie 4 z 30". */
+  count: number;
+}
+
+const { count } = Astro.props;
+---
+
+<dialog
+  id="usun-zdjecie"
+  class="panel-dialog"
+  aria-labelledby="usun-zdjecie-title"
+  data-count={count}
+>
+  <h2 id="usun-zdjecie-title">Usunąć to zdjęcie?</h2>
+
+  {/* The picture is the answer to "which one?", so it comes before the
+      sentence about what happens to it. Its alt is empty on purpose: the
+      heading and the line beside it already say what this is, and "Zdjęcie 4"
+      read twice is noise. */}
+  <div class="subject">
+    <img id="usun-zdjecie-podglad" src="" alt="" />
+    <p class="which" id="usun-zdjecie-ktore"></p>
+  </div>
+
+  <p class="dialog-warn" role="alert">
+    Zdjęcie zniknie z galerii i z serwera — jeśli nie masz go nigdzie indziej, nie da się go
+    przywrócić. Paczka do pobrania przygotuje się od nowa, więc przez chwilę klient zobaczy, że
+    galeria się szykuje.
+  </p>
+
+  <form method="POST" class="dialog-actions">
+    <input type="hidden" name="intent" value="delete-photo" />
+    <input type="hidden" name="id" id="usun-zdjecie-id" value="" />
+    <button type="submit" class="dialog-confirm">Tak, usuń zdjęcie</button>
+    {/* `autofocus` on the *safe* button, deliberately: showModal() otherwise
+        focuses the first thing it can, which is the red one, and Enter pressed
+        a moment too late would then delete a photograph. `formmethod="dialog"`
+        closes the dialog natively, so "no" needs no script of its own. */}
+    <button type="submit" class="dialog-cancel" formmethod="dialog" formnovalidate autofocus>
+      Nie, zostaw
+    </button>
+  </form>
+</dialog>
+
+{/* Opens on the × instead of letting it submit. Delegated from the grid rather
+    than bound per tile, so eight hundred tiles cost one listener -- and a grid
+    with no <dialog> support falls through to the plain POST the form already
+    is. */}
+<script is:inline>
+  (function () {
+    const dialog = document.getElementById('usun-zdjecie');
+    const grid = document.getElementById('photo-grid');
+    if (!dialog || !grid || typeof dialog.showModal !== 'function') return;
+
+    const idField = document.getElementById('usun-zdjecie-id');
+    const preview = document.getElementById('usun-zdjecie-podglad');
+    const which = document.getElementById('usun-zdjecie-ktore');
+    const total = Number(dialog.dataset.count) || 0;
+
+    grid.addEventListener('submit', (event) => {
+      const form = event.target.closest('.remove');
+      if (!form) return;
+      event.preventDefault();
+
+      idField.value = form.querySelector('input[name="id"]').value;
+
+      // The thumbnail the grid is already showing: same URL, so it is in the
+      // browser's cache and the dialog opens with the photograph in it rather
+      // than with an empty box that fills a moment later.
+      const thumb = form.closest('.tile')?.querySelector('img');
+      preview.src = thumb ? thumb.src : '';
+
+      which.textContent = form.dataset.nr ? `Zdjęcie ${form.dataset.nr} z ${total}` : '';
+      dialog.showModal();
+    });
+  })();
+</script>
+
+<style>
+  .subject {
+    display: flex;
+    align-items: center;
+    gap: 1.2rem;
+    margin: 0 0 2rem;
+  }
+
+  /* A fixed height and a free width: every photo keeps its own proportions
+     here for the same reason the grid never crops one -- this is the picture
+     she is deciding about, and a cropped version of it is a different
+     picture. */
+  .subject img {
+    height: 7rem;
+    width: auto;
+    max-width: 60%;
+    border: 1px solid var(--piaskowy);
+    border-radius: 3px;
+    background: var(--bez);
+  }
+
+  .which {
+    margin: 0;
+    font-size: 0.82rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tekst-jasny);
+  }
+</style>

@@ -421,7 +421,27 @@ its two previews — and one entry dropped from the manifest, because a photo is
 an id and nothing else is named after where it sat (see "A photo is an id",
 which is also the history of why this used to be harder). The × posts that id
 rather than a position, so a page left open while another tab deleted something
-cannot remove the photograph beside the one she meant. The archive still holds
+cannot remove the photograph beside the one she meant.
+
+**It asks first, in the panel's own dialog** (`DeletePhotoConfirm.astro`),
+because `window.confirm()` is the one box on these screens that can be shown
+nothing — and the thing worth showing is the photograph. So the dialog holds
+the tile's own thumbnail, already in the browser's cache so it paints
+instantly, with "Zdjęcie 4 z 30" beside it. One dialog serves the whole grid
+rather than one per tile: a wedding is 800 tiles and the only things that
+differ are an id, a picture and a number, filled in when it opens. Focus starts
+on "Nie, zostaw", deliberately — `showModal()` otherwise lands on the red
+button, where an Enter pressed a moment too late deletes a photograph. The form
+inside it posts exactly what the × posted before, so the dialog is a frame
+around that form rather than a replacement for it.
+
+Both dialogs wear the same chrome, from `src/styles/dialog.css`: the box, the
+red sentence, and the two buttons. A confirmation that looks slightly unlike
+the other confirmation is exactly the kind of difference that gets one of them
+read less carefully. What stays scoped to each is only its own body — a list of
+facts about a gallery, a photograph.
+
+The archive still holds
 the deleted photo, so it is removed and the gallery goes back to `preparing`
 for the worker to rebuild — the client sees the "preparing" page for as long as
 that ZIP takes.
@@ -449,8 +469,9 @@ The standalone page is the other frame, and it is the path taken with no
 JavaScript: every button that opens a dialog is a real link to it, so the
 question is still asked. Reached that way from a gallery it carries
 `?wroc=galeria` and its "no" goes back there rather than to the list. The dialog
-itself needs no script beyond `showModal()` — Escape and the backdrop close it,
-and "no" is a `formmethod="dialog"` submit.
+itself needs no script beyond `showModal()` — Escape closes it natively, and
+"no" is a `formmethod="dialog"` submit. The backdrop does not close it: a
+`<dialog>` has never done that on its own, and nothing here adds it.
 
 ## The grid is masonry, not square — and not justified rows either
 

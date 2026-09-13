@@ -33,6 +33,8 @@
  * layout does not. That is the cost of letting heights differ instead of
  * matching them, and it is what was asked for.
  */
+import DeletePhotoConfirm from './DeletePhotoConfirm.astro';
+
 interface PhotoMeta {
   /** The photo's id: what every URL here names it by. See server/photos.js. */
   id: string;
@@ -128,8 +130,10 @@ const tiles = photos.map((photo, index) => ({
             /* A form rather than a button with a fetch behind it: this page
                already answers POSTs, and it keeps working with no JavaScript.
                It posts the id, so a photo added or removed in another tab
-               cannot turn this into a delete of the photograph beside it. */
-            <form class="remove" method="POST" data-confirm={`Usunąć zdjęcie ${index + 1}?`}>
+               cannot turn this into a delete of the photograph beside it.
+               `data-nr` is only for the dialog's "Zdjęcie 4 z 30" -- the
+               position is no longer anything the server is told. */
+            <form class="remove" method="POST" data-nr={index + 1}>
               <input type="hidden" name="intent" value="delete-photo" />
               <input type="hidden" name="id" value={id} />
               <button type="submit" aria-label={`Usuń zdjęcie ${index + 1}`} title="Usuń to zdjęcie">
@@ -144,6 +148,8 @@ const tiles = photos.map((photo, index) => ({
     }
   </div>
 </div>
+
+{deletable && <DeletePhotoConfirm count={count} />}
 
 <style>
   /* Exists to be measured: `cqw` below asks how wide the grid is, and an
@@ -281,14 +287,3 @@ const tiles = photos.map((photo, index) => ({
   }
 </style>
 
-{/* Asks before it submits, and only where the × exists at all. Without
-    JavaScript the form still posts -- one deliberate click on a small target,
-    which is the trade the client's page never sees. */}
-<script is:inline>
-  document.getElementById('photo-grid')?.addEventListener('submit', (event) => {
-    const form = event.target.closest('.remove[data-confirm]');
-    if (form && !window.confirm(`${form.dataset.confirm} Tego nie da się cofnąć.`)) {
-      event.preventDefault();
-    }
-  });
-</script>
