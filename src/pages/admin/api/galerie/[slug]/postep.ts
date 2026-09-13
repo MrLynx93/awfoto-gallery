@@ -10,8 +10,9 @@
  * drive the bar's own fill -- but `working`, the signal that decides whether
  * to reload, is deliberately not "done reached total". `done` is how many
  * previews already exist, and every photo can have its derivatives finished
- * while the worker is still idling out its 45s quiet window (QUIET_PERIOD_MS
- * in worker.js) in case more files are still arriving. `photoCount` only
+ * while the worker is still finalising -- waiting out its quiet window in
+ * case more files are still arriving, then building the archive, neither of
+ * which the bar measures (QUIET_PERIOD_MS in worker.js). `photoCount` only
  * moves once, when `markReady()` finally runs at the end of that wait --
  * archive rebuilt, manifest rewritten -- so it is the one number that tells
  * this route a reload is actually safe. Reloading on `done >= total` instead

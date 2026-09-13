@@ -109,6 +109,47 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
    */
   const uploadedSlug = useRef<string | null>(slug);
 
+  /**
+   * This page-load's name for itself, told to the server so the worker knows
+   * how many browsers it is waiting for.
+   *
+   * Per page-load rather than per gallery, and that is the point: she can be
+   * uploading from the laptop while the desktop is still going, and a single
+   * "the upload is finished" would let whichever finished first speak for both
+   * -- the archive would be built around half the photographs. See
+   * server/uploaders.js.
+   */
+  const clientId = useMemo(
+    () =>
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `u${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
+    [],
+  );
+
+  /**
+   * Say whether this browser is still sending photos.
+   *
+   * Fire-and-forget, deliberately. It only ever *shortens* the wait: the worker
+   * finalises a gallery on its own timing when nothing is said, so an
+   * announcement that never arrives costs a few seconds and nothing she could
+   * act on -- which is not worth an error message on the one screen that has to
+   * stay simple.
+   */
+  const announce = useCallback(
+    (state: 'uploading' | 'done') => {
+      const target = uploadedSlug.current;
+      if (!target) return;
+      void fetch(`/admin/api/galerie/${encodeURIComponent(target)}/wysylka`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ clientId, state }),
+        keepalive: true,
+      }).catch(() => {});
+    },
+    [clientId],
+  );
+
   const startUpload = useCallback(async () => {
     const target = slug ?? (ensureGallery ? await ensureGallery() : null);
     if (!target) {
@@ -168,7 +209,12 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
     const onFilesAdded = () => {
       void startUploadRef.current();
     };
-    const onUploadStart = () => setUploading(true);
+    const onUploadStart = () => {
+      setUploading(true);
+      // Before a single byte, so a worker woken by the first completed file
+      // already knows somebody is mid-batch here.
+      announce('uploading');
+    };
     const onSuccess = () => {
       setSent((count) => count + 1);
       // The moment one file finishes, its tus hook has already moved it into
@@ -186,7 +232,13 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
     const onError = (file?: { name?: string }) => {
       setFailed((names) => [...names, file?.name ?? 'plik']);
     };
-    const onComplete = () => setUploading(false);
+    const onComplete = () => {
+      setUploading(false);
+      // The queue is empty. This is the moment the worker used to spend fifteen
+      // seconds inferring from mtimes, and the one thing on this screen that
+      // has always known it for certain.
+      announce('done');
+    };
 
     uppy.on('files-added', onFilesAdded);
     uppy.on('upload', onUploadStart);
@@ -201,7 +253,7 @@ export default function PhotoUploader({ slug, ensureGallery, variant = 'panel' }
       uppy.off('upload-error', onError);
       uppy.off('complete', onComplete);
     };
-  }, [uppy]);
+  }, [uppy, announce]);
 
   // Nothing transfers while the tab is closed. Closing at 80% pauses the
   // upload rather than destroying it, but she has no way to know that, so

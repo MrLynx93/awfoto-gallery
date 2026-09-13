@@ -198,6 +198,38 @@ and both of those subtractions are taken off one clock.
 All three are overridable on the host without a deploy: `WORKER_QUIET_MS`,
 `WORKER_POLL_MS`, `WORKER_MAX_WAIT_MS`.
 
+**But the window is a guess at something the browser already knows for
+certain**, and now it is only the fallback. Uppy fires `complete` the instant
+its queue empties, so `PhotoUploader.tsx` says so — and a gallery whose
+uploaders have all reported in is finalised immediately rather than after 15
+more seconds of inferring from mtimes. `server/uploaders.js` keeps those
+reports as `galleries/<slug>/uploaders/<clientId>.uploading` and `.done`, state
+in the suffix the way `<id>.skipped` does next door, so the worker's question
+on every pass of its poll loop is a directory listing and no file reads.
+
+**One record per page-load, not one flag per gallery**, and that is the part
+that makes the shortcut safe. She can be uploading from the laptop while the
+desktop is still going: a single "the upload is finished" would let whichever
+browser finished first speak for both, and the archive would be built around
+half the photographs. Each uploader announces itself under its own
+`crypto.randomUUID()` before the first byte, so the worker knows how many it is
+waiting for, and `settled` means *every* browser that announced this batch has
+also announced it finished. The records are forgotten when the run finalises —
+exactly the ones that run read, so a browser that began while the archive was
+building keeps its own.
+
+**A record can never make the wait longer, only shorter.** An uploader that
+says it is still going merely withholds the shortcut; the timing window above
+still decides, exactly as before. That direction is deliberate and it is the
+whole design: the tab holding an `uploading` record can be closed at 80% and
+never say anything again, and `preparing` is cleared by nothing but a finished
+run — a signal allowed to *block* would be one more way for the banner to stay
+up forever, which is the failure this file already has a section of history
+about. The worst a stuck record can do is cost that batch its shortcut.
+`scripts/check-worker-finishes.mjs` holds all three properties down: the
+announcement shortens the wait, a second device still uploading holds the
+gallery back, and a browser that never says it finished is finished for anyway.
+
 **The banner is a component because it belongs on two screens**, and the
 second one is the awkward one. `/admin/galeria` is rendered before the gallery
 exists — she drops a folder, the editor creates the row over fetch and rewrites

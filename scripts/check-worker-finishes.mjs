@@ -85,6 +85,7 @@ const load = (file) => import(pathToFileURL(path.join(server, file)).href);
 const S = await load('storage.js');
 const { newPhotoId, removePhoto } = await load('photos.js');
 const { markPhotosChanged } = await load('galleries.js');
+const { noteUploader } = await load('uploaders.js');
 const { runOnce, WAKE_PATH } = await load('worker.js');
 
 const readRow = async () => JSON.parse(await readFile(process.env.ROW_PATH, 'utf8'));
@@ -326,6 +327,104 @@ check('a delete during a run is picked up by that same run', async () => {
   assert.equal(interrupted, true, 'the run never reached the point being tested');
   assert.equal(row.status, 'ready', `left ${row.status}; log: ${said.join(' | ')}`);
   assert.equal(row.photoCount, 2);
+});
+
+check('an uploader that says it has finished does not wait out the quiet window', async () => {
+  await gallery(2);
+  // Two seconds since the last file landed: from mtimes alone this is
+  // indistinguishable from a photographer whose next photo is still climbing
+  // the line, which is exactly why the worker used to sit on it.
+  await setRow({ status: 'preparing', photoCount: 0, bytesTotal: 0, secondsSinceUpload: 2 });
+
+  await runOnce({ log: () => {} });
+  assert.equal(
+    (await readRow()).status,
+    'preparing',
+    'the control failed — the timing path was never the thing under test here',
+  );
+
+  // What Uppy's `complete` sends: this browser's queue is empty.
+  await noteUploader(SLUG, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'done');
+  await runOnce({ log: () => {} });
+
+  const row = await readRow();
+  assert.equal(row.status, 'ready', 'the announcement was ignored');
+  assert.equal(row.photoCount, 2);
+
+  // And the batch's records go with it, so the next batch is judged on its own.
+  assert.deepEqual(fs.readdirSync(S.uploadersDir(SLUG)), []);
+});
+
+check('a second device still uploading holds the gallery back', async () => {
+  await gallery(2);
+  await setRow({ status: 'preparing', photoCount: 0, bytesTotal: 0, secondsSinceUpload: 2 });
+
+  // The laptop is finished. The desktop is not. A single "the upload is done"
+  // flag would let the first one speak for the second, and the archive would be
+  // built around half the photographs.
+  await noteUploader(SLUG, 'laptop-1111', 'done');
+  await noteUploader(SLUG, 'biurko-2222', 'uploading');
+
+  await runOnce({ log: () => {} });
+  assert.equal((await readRow()).status, 'preparing', 'finalised while a device was still sending');
+
+  await noteUploader(SLUG, 'biurko-2222', 'done');
+  await runOnce({ log: () => {} });
+
+  const row = await readRow();
+  assert.equal(row.status, 'ready');
+  assert.equal(row.photoCount, 2);
+});
+
+check('a browser that never says it finished is still finished for', async () => {
+  await gallery(2);
+  await setRow({ status: 'preparing', photoCount: 0, bytesTotal: 0, secondsSinceUpload: 600 });
+
+  // A tab closed at 80%: its record says "uploading" and nothing will ever
+  // change it. This is the case that decides the whole design — a record may
+  // withhold the shortcut, never extend the wait, because `preparing` is
+  // cleared by nothing but a finished run.
+  await noteUploader(SLUG, 'zamknieta-karta', 'uploading');
+
+  await runOnce({ log: () => {} });
+
+  const row = await readRow();
+  assert.equal(row.status, 'ready', 'a stuck record held the gallery open');
+  assert.equal(row.photoCount, 2);
+  assert.deepEqual(fs.readdirSync(S.uploadersDir(SLUG)), []);
+});
+
+check('a finished announcement does not speak for the next batch', async () => {
+  await gallery(2);
+  await setRow({ status: 'ready', photoCount: 2, bytesTotal: 1000, secondsSinceUpload: 600 });
+
+  // A batch that announced it had finished and left nothing to finalise --
+  // every file in it failed, say. The run finds nothing to do.
+  await noteUploader(SLUG, 'zamknieta-karta', 'done');
+  await runOnce({ log: () => {} });
+  assert.deepEqual(
+    fs.readdirSync(S.uploadersDir(SLUG)),
+    [],
+    'a spent announcement was left lying about',
+  );
+
+  // Now she uploads again from a browser whose own announcement never arrives.
+  // The stale `.done` must not stand in for it: this batch is still landing.
+  const id = newPhotoId();
+  await writeFile(S.originalPath(SLUG, id, '.jpg'), 'pixels');
+  await writeFile(
+    S.photoRecordPath(SLUG, id),
+    JSON.stringify({ id, filename: 'DSC_0003.jpg', ext: '.jpg', uploadedAt: new Date().toISOString() }),
+  );
+  for (const size of ['thumb', 'large']) await writeFile(S.previewPath(SLUG, id, size), size);
+  await setRow({ status: 'preparing', photoCount: 2, bytesTotal: 1000, secondsSinceUpload: 2 });
+
+  await runOnce({ log: () => {} });
+  assert.equal(
+    (await readRow()).status,
+    'preparing',
+    'finalised on an announcement from a batch that was already over',
+  );
 });
 
 let failed = 0;

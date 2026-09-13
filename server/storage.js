@@ -11,6 +11,7 @@
  *     originals/<id>.json      {id, filename, ext, uploadedAt}, written at upload
  *     previews/<id>-thumb.jpg  grid, 500px long edge
  *     previews/<id>-large.jpg  lightbox, 2048px long edge
+ *     uploaders/<client>.done  which browsers are still sending photos here
  *     archive.zip              built by the worker
  *     manifest.json            photo list in display order, written by the worker
  *
@@ -79,6 +80,18 @@ function safeExt(ext) {
   return String(ext).toLowerCase();
 }
 
+/**
+ * A client id is a browser's name for one page-load of the uploader, and it
+ * arrives from that browser -- so it is checked the same way a photo id is.
+ * `crypto.randomUUID()` is what the uploader sends; the shape is what matters.
+ */
+function safeClientId(id) {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(id))) {
+    throw new Error(`Unsafe client id: ${id}`);
+  }
+  return id;
+}
+
 export function galleryDir(id) {
   return path.join(galleriesRoot, safeId(id));
 }
@@ -121,6 +134,27 @@ export function photoRecordPath(id, photoId) {
  */
 export function photoSkippedPath(id, photoId) {
   return path.join(originalsDir(id), `${safePhotoId(photoId)}.skipped`);
+}
+
+/**
+ * Where the browsers sending photos into this gallery say whether they are
+ * still going.
+ *
+ *   uploaders/<clientId>.uploading
+ *   uploaders/<clientId>.done
+ *
+ * The state is the suffix, the same trick `<id>.skipped` uses next door: the
+ * worker's question is "is anyone still uploading here", and a directory
+ * listing answers it without reading a single file. One entry per page-load of
+ * the uploader, so a second device is a second entry rather than an overwrite
+ * of the first -- which is the whole reason this exists; see
+ * server/uploaders.js.
+ */
+export const uploadersDir = (id) => path.join(galleryDir(id), 'uploaders');
+
+export function uploaderMarkPath(id, clientId, state) {
+  if (state !== 'uploading' && state !== 'done') throw new Error(`Unknown state: ${state}`);
+  return path.join(uploadersDir(id), `${safeClientId(clientId)}.${state}`);
 }
 
 export async function readPhotoRecord(id, photoId) {

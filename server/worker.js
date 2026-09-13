@@ -25,6 +25,7 @@ import { makeDerivatives, dimensions } from './images.js';
 import { buildArchive, verifyArchive } from './archive.js';
 import { canFit } from './disk.js';
 import { setPhotoAside } from './photos.js';
+import { forgetUploaders, uploaderState } from './uploaders.js';
 import {
   incomingDir,
   listPhotos,
@@ -93,13 +94,19 @@ const tuning = (name, fallback) => {
 /**
  * How long after the last sign of an upload a gallery is considered finished.
  *
+ * This is the **fallback** now: when the uploader says a batch is finished
+ * (server/uploaders.js) there is nothing left to wait for and none of this is
+ * consulted. It still decides for everything that cannot say so — a delete, a
+ * cron run picking up a tab that was closed at 80%, a browser whose announcement
+ * never arrived.
+ *
  * It was 45 seconds, and every one of those seconds was spent with the bar
- * already full and nothing visibly happening. 15 is enough now because the
- * wait no longer rests on completed files alone: `sinceIncomingActivity()`
- * also watches the bytes still being written. A session here is ~20 photos of
- * ~15 MB, and one of those can take longer to arrive than this window — on the
- * old signal that would have finalised the gallery between two photos and
- * rebuilt the whole 300 MB archive for each one that followed.
+ * already full and nothing visibly happening. 15 is enough because the wait no
+ * longer rests on completed files alone: `sinceIncomingActivity()` also watches
+ * the bytes still being written. A session here is ~20 photos of ~15 MB, and one
+ * of those can take longer to arrive than this window — on the old signal that
+ * would have finalised the gallery between two photos and rebuilt the whole
+ * 300 MB archive for each one that followed.
  */
 const QUIET_PERIOD_MS = tuning('WORKER_QUIET_MS', 15_000);
 
@@ -211,6 +218,11 @@ async function processGallery(slug, { log = console.log } = {}) {
   const gallery = await findBySlug(slug);
   if (!gallery) return 'idle';
 
+  // Read before anything is decided, and carried through to the end: the run
+  // that finalises forgets exactly these records, so a browser that started
+  // uploading somewhere in between keeps its own.
+  const uploaders = await uploaderState(slug);
+
   // Disk is the truth, and one record per photo is what it says. A record
   // whose bytes never arrived is named rather than silently skipped: it is the
   // only trace of an upload hook that died mid-move.
@@ -239,6 +251,7 @@ async function processGallery(slug, { log = console.log } = {}) {
     await rm(archivePath(slug), { force: true });
     await writeManifest(slug, []);
     await markReady(slug, { photoCount: 0, bytesTotal: 0, status: 'ready' });
+    await forgetUploaders(slug, uploaders.seen);
     log(`[worker] ${slug}: no photos left — nothing to prepare`);
     return 'done';
   }
@@ -252,12 +265,26 @@ async function processGallery(slug, { log = console.log } = {}) {
   // Still arriving? Generate derivatives for what is here, but do not finalise:
   // building the archive now would only mean rebuilding it for the next photo,
   // and marking the gallery ready would hide the ones still to come.
+  //
+  // `settled` is the browser's own word for it -- every uploader that
+  // announced this batch has announced that it finished -- and it is worth
+  // trusting because it is the one signal here that is not an inference from
+  // mtimes. The timing window below is what answers when nobody said anything.
   const window = QUIET_PERIOD_MS / 1000;
   const quiet =
-    sinceLastUpload(gallery) > window && (await sinceIncomingActivity()) > window;
+    uploaders.settled ||
+    (sinceLastUpload(gallery) > window && (await sinceIncomingActivity()) > window);
 
   // Nothing new since the last run, and already finished.
   if (quiet && gallery.status !== 'preparing' && gallery.photoCount === uploaded.length) {
+    // The one path where records can outlive the batch that wrote them: a
+    // browser announced it had finished and there was nothing left to finalise
+    // (every file in that batch failed, say). Left lying about, a `.done` from
+    // a closed tab would speak for the *next* batch, whose own announcement may
+    // never arrive -- and the shortcut would be taken while photos were still
+    // coming. Only when nothing claims to be uploading, so a live batch waiting
+    // on its first file to land is never swept out from under itself.
+    if (!uploaders.active) await forgetUploaders(slug, uploaders.seen);
     return 'idle';
   }
 
@@ -330,6 +357,7 @@ async function processGallery(slug, { log = console.log } = {}) {
 
   if (photos.length === 0) {
     await markReady(slug, { photoCount: 0, bytesTotal: 0, status: 'failed' });
+    await forgetUploaders(slug, uploaders.seen);
     log(`[worker] ${slug}: no photo could be processed — marked failed`);
     return 'done';
   }
@@ -383,6 +411,7 @@ async function processGallery(slug, { log = console.log } = {}) {
     bytesTotal: originalBytes + derivativeBytes + archiveBytes,
     status,
   });
+  await forgetUploaders(slug, uploaders.seen);
 
   log(`[worker] ${slug}: ${status}, ${photos.length} photos`);
   return 'done';
