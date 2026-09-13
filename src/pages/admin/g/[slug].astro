@@ -88,9 +88,11 @@ if (Astro.request.method === 'POST') {
       wakeWorker('photos');
     }
 
-    // Same URL either way: an id this gallery no longer has means a double
-    // submit or a stale page, and the grid she lands on is the answer.
-    return Astro.redirect(`${galleryAdminPath(slug)}${removed ? '?zdjecie=usuniete' : ''}`, 303);
+    // Same URL either way, and no marker on it: an id this gallery no longer
+    // has means a double submit or a stale page, and the grid she lands on is
+    // the answer. The banner says the same thing whether a photo was added or
+    // removed, so there is nothing left for a query parameter to tell it.
+    return Astro.redirect(galleryAdminPath(slug), 303);
   }
 
   await setPassword(slug, generatePassword());
@@ -99,7 +101,6 @@ if (Astro.request.method === 'POST') {
 
 const gallery = describeGallery(row);
 const password = readPassword(row);
-const justRemoved = Astro.url.searchParams.has('zdjecie');
 
 /**
  * What the client is seeing right now, in her words rather than the row's.
@@ -201,11 +202,6 @@ try {
       done={uploadProgress.done}
       total={uploadProgress.total}
       note={STATUS_NOTE[gallery.status] ?? 'Link działa od razu.'}
-      text={
-        justRemoved
-          ? 'Zdjęcie zostało usunięte, więc paczka do pobrania przygotowuje się od nowa. Klient na razie widzi informację, że galeria się szykuje.'
-          : 'Przygotowuję zdjęcia — klient na razie widzi informację, że galeria się szykuje.'
-      }
     />
 
     <GalleryGrid slug={row.slug} photos={photos} deletable={true}>

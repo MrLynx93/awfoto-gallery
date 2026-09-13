@@ -1,7 +1,7 @@
 ---
 /**
- * "Przygotowuję zdjęcia" — the banner, its progress bar, and the poll that
- * keeps both moving.
+ * "Zdjęcia zostały zmienione" — the banner, its progress bar, and the poll
+ * that keeps both moving.
  *
  * It belongs on two screens, which is why it is a component rather than markup
  * inside one page: a gallery's own page, and the **new-gallery screen**, where
@@ -22,6 +22,13 @@
  * being conditionally rendered: the script flips between them the moment an
  * upload finishes, and it can only do that with real elements, not by asking
  * Astro to build one.
+ *
+ * **One sentence covers every reason the worker is busy**, and it used to be
+ * two: one for a delete, one for everything else. From where she is sitting
+ * they are the same event — she changed which photos are in the gallery, and
+ * the download package is being made again — so wording them differently only
+ * asked her to notice a distinction that changes nothing she can do. Adding
+ * photos and removing one now say the same thing.
  *
  * **The sentence promises a refresh, so nothing here may hedge about one.**
  * "Ta strona odświeży się sama" is what she reads, and it has to be simply
@@ -44,18 +51,9 @@ interface Props {
    * no gallery to say anything about yet.
    */
   note?: string | null;
-  /** The banner's own first sentence; a delete says something slightly different. */
-  text?: string;
 }
 
-const {
-  slug = null,
-  working = false,
-  done = 0,
-  total = 0,
-  note = null,
-  text = 'Przygotowuję zdjęcia — klient na razie widzi informację, że galeria się szykuje.',
-} = Astro.props;
+const { slug = null, working = false, done = 0, total = 0, note = null } = Astro.props;
 
 const hasProgress = total > 0;
 const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
@@ -69,7 +67,9 @@ const progressPct = hasProgress ? Math.round((done / total) * 100) : 0;
   </svg>
   <span class="preparing-body">
     <span class="preparing-text" id="preparing-text">
-      {text}{' '}Ta strona odświeży się sama, gdy wszystko będzie gotowe.
+      Zdjęcia zostały zmienione, więc paczka do pobrania przygotowuje się od nowa. Klient na
+      razie widzi informację, że galeria się szykuje. Ta strona odświeży się sama, gdy wszystko
+      będzie gotowe.
     </span>
     {/* A div-based bar rather than <progress>: the width, the stripe that
         slides across it and the count beside it all need to animate smoothly

@@ -165,6 +165,14 @@ place — an animated count-up over the numbers rather than a jump, and a
 diagonal stripe sliding across the fill so "still going" survives even while
 the count itself briefly sits still between two polls.
 
+**One sentence covers every reason it is up.** It used to say something
+different after a delete than after an upload, and from where she is sitting
+those are the same event — she changed which photos are in the gallery, and the
+download package is being made again. Wording them apart only asked her to
+notice a distinction that changes nothing she can do, so adding photos and
+removing one now read alike: "Zdjęcia zostały zmienione, więc paczka do
+pobrania przygotowuje się od nowa."
+
 **The banner is a component because it belongs on two screens**, and the
 second one is the awkward one. `/admin/galeria` is rendered before the gallery
 exists — she drops a folder, the editor creates the row over fetch and rewrites
