@@ -30,21 +30,30 @@ function makeSlug(length = 10) {
  * the files are actually gone, so a gallery must stop being reachable the
  * moment it is condemned rather than when the last byte is unlinked.
  */
+/**
+ * `secondsSinceUpload` is measured by MySQL against its own NOW(), and the
+ * worker must never do that subtraction itself: `dateStrings` hands back
+ * `last_upload_at` as a bare wall-clock string with no zone, and JavaScript
+ * date parsing reads it in the *Node process's* zone. Where the two disagree —
+ * a database keeping local time, an app process running in UTC — the last
+ * upload lands hours in the future, every gallery looks like one still
+ * receiving files, and nothing is ever finalised. Two values off one clock
+ * cannot get that wrong.
+ *
+ * **The explanation lives here rather than inside the query**, and that is not
+ * a style preference: `named-placeholders`, which mysql2 uses to turn `:slug`
+ * into a bound parameter, does not understand SQL comments. An apostrophe in
+ * one opens a string literal that swallows the rest of the statement, and a
+ * time like 14 hours 45 becomes two placeholders of its own — either way the
+ * real parameter is never bound and every query here fails. `npm run
+ * check:queries` holds that down.
+ */
 export async function findBySlug(slug) {
   const [rows] = await db().query(
     `SELECT id, slug, session_name AS sessionName, session_date AS sessionDate,
             password_hash AS passwordHash, password_enc AS passwordEnc,
             status, photo_count AS photoCount,
             bytes_total AS bytesTotal, last_upload_at AS lastUploadAt,
-            -- Measured by MySQL against its own NOW(), because the worker must
-            -- not do this subtraction itself: dateStrings hands it
-            -- last_upload_at as "2026-09-13 14:45:00" with no zone at all, and
-            -- Date parsing reads that in the Node process's zone. Where the two
-            -- disagree -- a database keeping local time, an app process running
-            -- in UTC -- the timestamp lands hours in the future, the worker
-            -- decides files are still arriving, and every gallery sits in
-            -- przygotowuje until real time catches up. Two values off one clock
-            -- cannot get that wrong.
             TIMESTAMPDIFF(SECOND, last_upload_at, NOW()) AS secondsSinceUpload,
             expires_at AS expiresAt, created_at AS createdAt
        FROM galleries
@@ -178,13 +187,18 @@ export const readPassword = (gallery) =>
  * contains the deleted photo and has to be rebuilt, and that status is the only
  * thing that stops the worker deciding it has nothing to do.
  */
+/**
+ * `bytes_total` is zeroed only for a gallery that just lost its last photo; the
+ * worker retallies it on its next run either way.
+ *
+ * (Said here rather than inside the query, like every other explanation in this
+ * file — see findBySlug for what a comment inside query text does to the
+ * driver's parameter binding.)
+ */
 export async function markPhotosChanged(slug, photoCount) {
   await db().query(
     `UPDATE galleries
         SET photo_count = :photoCount,
-            -- The worker retallies on its next run. Zeroing matters only for a
-            -- gallery that just lost its last photo, which the worker will find
-            -- empty and leave alone.
             bytes_total = IF(:photoCount = 0, 0, bytes_total),
             status = 'preparing'
       WHERE slug = :slug`,

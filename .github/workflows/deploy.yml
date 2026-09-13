@@ -43,6 +43,16 @@ jobs:
       - name: Check the app loads the way Passenger loads it
         run: npm run check:passenger
 
+      # Three failures that all ship green and only show up in production: a
+      # query the driver cannot bind (every page 500s), a photo identified by
+      # anything but its id, and a worker that leaves a gallery "preparing"
+      # forever. None of them is caught by a build.
+      - name: Check the queries, the photo identity and the worker
+        run: |
+          npm run check:queries
+          npm run check:photos
+          npm run check:worker
+
       - name: Configure SSH key
         run: |
           mkdir -p ~/.ssh

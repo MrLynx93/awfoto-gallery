@@ -751,6 +751,19 @@ worth the complexity here.
   dropped, and no data moves: a `CHANGE` renames the column under the rows it
   already has.
 
+  **Never put a comment inside a query string.** `named-placeholders`, which
+  mysql2 uses to turn `:slug` into a bound `?`, does not understand SQL
+  comments — it scans the whole statement for quotes and colons. An apostrophe
+  in one ("the process's zone") opens a string literal that swallows everything
+  after it, so the real placeholder is never seen and *nothing* is bound; a
+  time written `14:45:00` adds two placeholders named `45` and `00`. Either way
+  the statement fails before MySQL is reached, and nothing in the error points
+  at the comment. This took every gallery page to a 500 once. The explanation
+  belongs in a JSDoc above the function, where it reads better anyway, and
+  `scripts/check-queries.mjs` (`npm run check:queries`, also run by the deploy
+  workflow) fails the build on both the rule and the invariant behind it: every
+  statement must bind exactly the parameters it names.
+
   **`migrate()` in `server/db.js` also checksums every applied file**, which is
   what those two renames exposed the need for: editing `001_initial.sql` after a
   database had already run it is exactly the mistake a checksum catches. Every
