@@ -38,6 +38,16 @@ import { STORAGE_ROOT } from './config.js';
 const LOCK_PATH = path.join(STORAGE_ROOT, 'worker.lock');
 
 /**
+ * Touched by `wakeWorker()` every time something asks for a run.
+ *
+ * The spawn it makes alongside is usually the worker; when one is already
+ * holding the lock, the spawn exits immediately and this file is all that is
+ * left of the request. Reading it before finishing is what keeps that request
+ * from being dropped -- see the loop in runOnce().
+ */
+export const WAKE_PATH = path.join(STORAGE_ROOT, 'worker.wake');
+
+/**
  * One worker at a time, enforced by an exclusive create.
  *
  * `wx` fails if the file exists, which is atomic on every filesystem that
@@ -68,6 +78,9 @@ async function acquireLock({ staleAfterMs = 60 * 60_000 } = {}) {
 }
 
 const releaseLock = () => rm(LOCK_PATH, { force: true });
+
+/** When the last request for a run came in, or 0 if none ever has. */
+const wakeMark = () => stat(WAKE_PATH).then((s) => s.mtimeMs).catch(() => 0);
 
 /**
  * How long after the last file lands a gallery is considered finished.
@@ -141,7 +154,30 @@ async function processGallery(slug, { log = console.log } = {}) {
     onIncomplete: (record) =>
       log(`[worker] ${slug}: no bytes for ${record.filename ?? record.id} — upload interrupted`),
   });
-  if (uploaded.length === 0) return 'idle';
+
+  if (uploaded.length === 0) {
+    // Two very different galleries look like this, and the manifest tells them
+    // apart. One she has only just created and not dropped anything into yet:
+    // nothing has ever been written for it, and there is nothing to do.
+    //
+    // The other just lost its last photo. `removePhoto` rewrote the manifest
+    // and `markPhotosChanged` put the row back to `preparing` for this run to
+    // clear -- and returning 'idle' there left it preparing *forever*: the
+    // panel's banner never went away, the bar sat at nothing, and the client's
+    // gallery said "przygotowuję" for a gallery that was simply empty. So an
+    // emptied gallery is finished here rather than skipped.
+    const written = await readManifest(slug).then(() => true).catch(() => false);
+    const settled = gallery.status === 'ready' && Number(gallery.photoCount) === 0;
+    if (!written || settled) return 'idle';
+
+    // The archive still holds the photos that were deleted, and there is now
+    // nothing for it to hold.
+    await rm(archivePath(slug), { force: true });
+    await writeManifest(slug, []);
+    await markReady(slug, { photoCount: 0, bytesTotal: 0, status: 'ready' });
+    log(`[worker] ${slug}: no photos left — nothing to prepare`);
+    return 'done';
+  }
 
   // What the last run recorded, keyed by id: it carries the proportions the
   // grid needs, which are cheap to carry forward and a subprocess each to
@@ -299,6 +335,14 @@ export async function runOnce({ log = console.log } = {}) {
     const deadline = Date.now() + MAX_WAIT_MS;
     let finished = 0;
 
+    // Where the wake file stood when this run began. Anything that asks for a
+    // run while this one is working moves it, and the spawn it made alongside
+    // found the lock held and exited -- so this run is the only one left that
+    // can honour the request. She deletes a photo seconds after an upload
+    // settles, and without this it waits on the five-minute cron instead, with
+    // the progress banner on screen for all of it.
+    let seenWake = await wakeMark();
+
     for (;;) {
       let waiting = 0;
 
@@ -308,7 +352,17 @@ export async function runOnce({ log = console.log } = {}) {
         if (outcome === 'done') finished += 1;
       }
 
-      if (waiting === 0) break;
+      if (waiting === 0) {
+        const wake = await wakeMark();
+        // Compared rather than tested against the clock: one more pass per
+        // request that arrived, and a file that somehow carries a future
+        // timestamp still cannot spin this forever.
+        if (wake !== seenWake) {
+          seenWake = wake;
+          continue;
+        }
+        break;
+      }
 
       if (Date.now() > deadline) {
         log('[worker] gave up waiting for uploads to settle; cron will finish');

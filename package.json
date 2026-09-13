@@ -10,6 +10,7 @@
     "astro": "astro",
     "check:passenger": "node scripts/check-passenger-compat.mjs",
     "check:photos": "node scripts/check-photo-identity.mjs",
+    "check:worker": "node scripts/check-worker-finishes.mjs",
     "reset": "node scripts/reset.mjs"
   },
   "dependencies": {

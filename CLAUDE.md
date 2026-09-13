@@ -446,6 +446,31 @@ the deleted photo, so it is removed and the gallery goes back to `preparing`
 for the worker to rebuild — the client sees the "preparing" page for as long as
 that ZIP takes.
 
+**`preparing` means a worker owes this gallery a run, and nothing else ever
+clears it** — which makes every way of not doing that run look identical from
+the panel: the progress banner simply never goes away. Two of them were real,
+and `scripts/check-worker-finishes.mjs` (`npm run check:worker`) exists because
+neither failed anything, they just hung:
+
+- **Deleting the last photo.** The worker found no photos, returned "nothing to
+  do", and left the row `preparing` forever. An empty gallery is now finished
+  rather than skipped — archive removed, empty manifest, `markReady(0)`. A
+  gallery she has only just created looks the same from the directory, so the
+  manifest is what tells them apart: a delete rewrote it, and a gallery that has
+  never had a photo has none, and is still left alone.
+- **Deleting a photo while a worker was already running.** `wakeWorker()`
+  spawns one, it finds the lock held and exits, and the run holding the lock had
+  already passed that gallery — so the request was gone, and only the
+  five-minute cron would have noticed. `wakeWorker()` now touches
+  `STORAGE_ROOT/worker.wake` *before* spawning, and a run compares that
+  timestamp before it finishes: changed means someone asked while it worked, so
+  it makes another pass. Compared rather than raced against the clock, so one
+  extra pass per request and no way to spin.
+
+That check runs the real worker with only `db.js` and `galleries.js` swapped
+for a JSON file, because the bugs were in worker.js itself and a rewritten
+imitation of it would have proved nothing.
+
 A whole gallery can go too, for the session that is finished before its term or
 the one uploaded twice. It goes through `server/removal.js`, in the order the
 nightly sweep will want: condemn the row, then the files, then the row itself —
