@@ -702,6 +702,20 @@ sentence it always holds so it cannot spill into the column beside it, and
 none of this touches the phone layout, where the table stops being a table
 before `<colgroup>` ever applies.
 
+**And the name in that column is painted as a link, because it is the only
+way into a gallery.** It used to be body text in the body's own colour under a
+taupe hairline — beside a sentence of grey facts that read as emphasis, not as
+something to click, and on the phone the hairline was cancelled outright, so
+the one line on the row that goes anywhere looked exactly like the one that
+does not. It now takes `--glina-ciemna`, the colour `a` already has everywhere
+else in this app, at weight 500 over a real underline. `text-decoration`
+rather than `border-bottom`: this is the one column allowed to wrap, and a
+border draws under the inline box while an underline follows every line a long
+session name takes. Hover firms that underline up — taupe to currentColor, 1px
+to 2px — instead of changing the colour, since the colour is what says "link"
+in the first place and a pointer should confirm the target rather than reveal
+it.
+
 ## Upload UI requirements
 
 One screen. Nothing else on it.

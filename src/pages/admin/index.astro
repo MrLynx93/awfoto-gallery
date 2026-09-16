@@ -117,7 +117,11 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
                     the details and the drop zone, so this is also the way in to
                     changing anything -- which is why there is no second link
                     beside it. */}
-                <a href={galleryAdminPath(gallery.slug)}>{gallery.sessionName}</a>
+                {/* On one line deliberately: the newlines of a wrapped tag
+                    collapse into spaces inside the anchor, and an underline
+                    that runs a space past the name on either side is exactly
+                    the kind of small wrongness this change is fixing. */}
+                <a class="session-link" href={galleryAdminPath(gallery.slug)}>{gallery.sessionName}</a>
               </td>
               {/* The phone's whole row, in words. Everything the columns say
                   beside it, said the way she would say it -- and built here
@@ -238,15 +242,43 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
     padding: 0 0.8rem 0.6rem; border-bottom: 1px solid var(--piaskowy);
   }
   td { padding: 0.85rem 0.8rem; border-bottom: 1px solid var(--bez); }
-  td a { color: var(--tekst); text-decoration: none; border-bottom: 1px solid var(--taupe); }
+  /* The name is the way into the gallery, and it did not look like one: body
+     text in the body's own colour, under a taupe hairline thin enough to read
+     as a typographic flourish next to the sentence beside it. It wears the
+     panel's link colour now -- the same clay `a` gets everywhere else in this
+     app -- at a weight nothing else in the row uses, over a real underline.
+     `text-decoration` rather than the `border-bottom` it replaces: the name is
+     the one column allowed to wrap, and a border draws under the inline box
+     while an underline follows every line the name takes. */
+  td a.session-link {
+    color: var(--glina-ciemna);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: var(--taupe);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.22em;
+    transition: text-decoration-color 0.2s, text-decoration-thickness 0.2s;
+  }
+  /* Hover firms the underline up rather than changing the colour: the colour is
+     already the thing saying "link", so leaving it put means the pointer
+     confirms the target instead of announcing it for the first time. */
+  td a.session-link:hover {
+    text-decoration-color: currentColor;
+    text-decoration-thickness: 2px;
+  }
+  td a.session-link:focus-visible {
+    outline: 2px solid var(--glina);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
   /* The icons only appear on a small screen; on a laptop the words say it
      better than any pictogram of a pencil. */
   td .quiet svg { display: none; }
-  td a:hover { color: var(--glina-ciemna); }
   .num { font-variant-numeric: tabular-nums; }
   .right { text-align: right; white-space: nowrap; }
-  /* `td a` above it is two elements' worth of specificity, so a bare .quiet
-     lost to it and these links kept the client link's underline. */
+  /* Still qualified with `td`, though the bare `td a` it used to have to
+     outweigh is gone: the rule it lost to is the name link's now, and that one
+     is a class, so these two no longer fight at all. */
   td a.quiet {
     display: inline-flex; align-items: center; gap: 0.4rem;
     font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase;
@@ -326,8 +358,11 @@ const usedFraction = Math.min(1, used / diskBudgetBytes);
     td { display: block; padding: 0; border: 0; }
     .col-date, .col-count, .col-size, .col-expiry { display: none; }
 
+    /* The underline stays here, unlike the border it replaced, which this rule
+       used to cancel. A finger cannot hover, so the link's resting state is the
+       only state a phone ever shows it in -- and it is the one line on the row
+       that goes anywhere. */
     td:first-child { grid-column: 1; font-size: 1.02rem; }
-    td:first-child a { border-bottom: 0; }
 
     .summary {
       display: block;
