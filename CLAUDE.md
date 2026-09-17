@@ -409,8 +409,19 @@ she decides which it should be.
 Both pages wear the site's bar — the mark from awfoto-site's `SiteHeader`, and
 nothing else on the client's, whose wordmark leads to aw-foto.pl rather than to
 a login screen. The client's gallery also says how long it has: "jeszcze 28 dni
-— do 8 października", above the grid rather than under it, because it is the
-reason to press the download button.
+— do 8 października". That line sits **with the download button** — directly
+under it on a phone, beside it on a wider screen — rather than as its own
+paragraph under the header: it is the reason to press that button, so it is
+read where the button is. It used to be a full-width line below the header,
+which put the deadline and the thing to do about it in two different places.
+
+The header's other half is hers: a short thank-you under the session name and
+date — "Dziękuję za wspólną sesję. Mam nadzieję, że zdjęcia przyniosą dużo
+radości i uśmiechu :)" — set in the display face at reading size, so it reads
+as a note from the photographer rather than as another piece of interface
+copy. It is the same sentence for every gallery; nothing about it is per-client
+yet, and a per-gallery message would be a field on the upload screen and a
+column in the row, which is not in scope.
 
 Her own page for a gallery is a **separate page**, `/admin/g/:slug`, not a
 bypass inside the client's. `/g/:slug` keeps exactly one behaviour — gate, then

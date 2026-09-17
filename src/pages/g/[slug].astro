@@ -170,21 +170,26 @@ const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
     ) : (
       <>
         <header class="gallery-head">
-          <div>
+          <div class="intro">
             <h1>{gallery.sessionName}</h1>
             {dateLabel && <p class="date">{dateLabel}</p>}
+            <p class="thanks">
+              Dziękuję za wspólną sesję. Mam nadzieję, że zdjęcia przyniosą
+              dużo radości i uśmiechu :)
+            </p>
           </div>
-          <a class="download" href={`/g/${slug}/zip`}>
-            Pobierz wszystkie ({photos.length})
-          </a>
+          <div class="get">
+            <a class="download" href={`/g/${slug}/zip`}>
+              Pobierz wszystkie ({photos.length})
+            </a>
+            {daysLeft !== null && (
+              <p class="until">
+                Zdjęcia będą dostępne jeszcze {dayCount(daysLeft)} — do{' '}
+                {untilLabel}. Potem galeria wygaśnie, więc pobierz je wcześniej.
+              </p>
+            )}
+          </div>
         </header>
-
-        {daysLeft !== null && (
-          <p class="until">
-            Zdjęcia będą dostępne jeszcze {dayCount(daysLeft)} — do {untilLabel}.
-            Potem galeria wygaśnie, więc pobierz je wcześniej.
-          </p>
-        )}
 
         <GalleryGrid slug={slug} photos={photos} />
         <Lightbox />
@@ -279,12 +284,40 @@ const untilLabel = gallery ? polishDate(gallery.expiresAt) : null;
     margin-bottom: 0.15em;
   }
 
-  /* Under the header rather than in the footer: it is the reason to press the
-     download button, and it should be read before the photographs rather than
-     after them. */
+  .intro {
+    max-width: 36rem;
+  }
+  /* The date sat last in this column and carried the space under it; now the
+     thank-you does, so it only needs to clear itself. */
+  .intro .date {
+    margin-bottom: 0.9em;
+  }
+
+  /* Her voice, not the interface's: the display face the headings use, at
+     reading size rather than heading size. */
+  .thanks {
+    margin: 0;
+    font-family: var(--display);
+    font-size: clamp(1.05rem, 2.2vw, 1.3rem);
+    line-height: 1.5;
+    color: var(--tekst);
+  }
+
+  /* Beside the download button on a wide screen and directly under it on a
+     phone -- it is the reason to press the button, so it is read where the
+     button is rather than somewhere else on the page. */
+  .get {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    max-width: 22rem;
+  }
+
   .until {
-    margin: -0.5rem 0 clamp(1.5rem, 4vw, 2.5rem);
+    margin: 0;
     font-size: 0.85rem;
+    line-height: 1.45;
+    text-align: center;
     color: var(--tekst-jasny);
   }
 
